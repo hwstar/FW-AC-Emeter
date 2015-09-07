@@ -177,6 +177,7 @@ int main(void)
 	static char volts[8], amps[8], kw[8], kva[8], hz[8], pf[8], kvar[8]; 
 	static char pa[8];
 	uint16_t cs;
+	uint8_t screen = 0;
 
 	
     init();
@@ -206,43 +207,60 @@ int main(void)
   for(;;)
   { 
 
-
 	/* Get data */
 
-	// kW
-	to_fixed_decimal_int16(kw,8,3, 
-		(int16_t) em_read_transaction(EM_PMEAN));
+	switch(screen){
+		case 0:
+			// kW
+			to_fixed_decimal_int16(kw,8,3, 
+				(int16_t) em_read_transaction(EM_PMEAN));
 	
-	// Vrms
-	to_fixed_decimal_uint16(volts, 8, 2, em_read_transaction(EM_URMS));
+			// Vrms
+			to_fixed_decimal_uint16(volts, 8, 2,
+				em_read_transaction(EM_URMS));
 	
-	// Irms
-	to_fixed_decimal_uint16(amps, 8, 3, em_read_transaction(EM_IRMS));
+			// Irms
+			to_fixed_decimal_uint16(amps, 8, 3,
+				em_read_transaction(EM_IRMS));
 	
-	// Apparent power (kVA)
-	to_fixed_decimal_int16(kva,8,3, 
-		(int16_t) em_read_transaction(EM_SMEAN));
+			// Apparent power (kVA)
+			to_fixed_decimal_int16(kva,8,3, 
+				(int16_t) em_read_transaction(EM_SMEAN));
 	
-	// Line frequency
-	to_fixed_decimal_uint16(hz,8,2,em_read_transaction(EM_FREQ));
+			// Line frequency
+			to_fixed_decimal_uint16(hz,8,2,em_read_transaction(EM_FREQ));
 	
-	// Power Factor
-	to_fixed_decimal_int16(pf, 8, 3, em_read_transaction(EM_POWERF));
+			// Power Factor
+			to_fixed_decimal_int16(pf, 8, 3,
+				em_read_transaction(EM_POWERF));
 	
-	// Reactive power (kVA)
+			// Reactive power (kVA)
 	
-	to_fixed_decimal_int16(kvar, 8, 3, em_read_transaction(EM_QMEAN));
+			to_fixed_decimal_int16(kvar, 8, 3,
+				em_read_transaction(EM_QMEAN));
 	
-	// Phase angle
-	to_fixed_decimal_int16(pa, 8, 1, em_read_transaction(EM_PANGLE));
-
-	/* Update display */
-		 
-    u8g_FirstPage(&u8g);
+			// Phase angle
+			to_fixed_decimal_int16(pa, 8, 1, em_read_transaction(EM_PANGLE));
+			break;
+			
+		default:
+			break;
+	}
+				
+	/* Update display */ 
+	u8g_FirstPage(&u8g);
+				
     do
     {
-
-      draw_meter_data(volts, amps, kw, kva, hz, pf, kvar, pa);
+		switch(screen){
+			case 0:
+				draw_meter_data(volts, amps, kw, kva, hz, pf, kvar, pa);
+				break;
+				
+			default:
+				break;
+		}
+							
     } while ( u8g_NextPage(&u8g) );
 
     u8g_Delay(250);
