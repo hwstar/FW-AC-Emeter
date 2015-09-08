@@ -3,21 +3,10 @@
   main.c 
   
   
+  
 */
 
-
-#if defined(__AVR__)
-#include <avr/interrupt.h>
-#include <avr/io.h>
-#include <util/delay.h>
-#endif
-
-#include <stdio.h>
-
-#include "u8g.h"
-#include "em.h"
-#include "uart.h"
-#include "uartstream.h"
+#include "includes.h"
 
 #define IBASIC 1								// Basic current (A)
 #define VREF 240								// Reference voltage (V)
@@ -30,8 +19,15 @@
 
 #define MODE_WORD	0x3422						// Gain of 8 for current, rest are defaults
 
+
+typedef struct {
+	uint16_t sig;
+	uint16_t meter_cal[11];						// Meter calibration data
+	uint16_t measure_cal[10];					// Measurement calibration data
+} eeprom_data_t;
 	
-static uint16_t cal[11] = {
+	
+static uint16_t dfl_meter_cal[11] = {
 	((uint16_t) (PLC >> 16)), 	// 0x21 High word of power line constant
 	((uint16_t) PLC), 	// 0x22 Low word of power line constant
 	0x0000,		// 0x23 L line calibration gain
@@ -45,28 +41,108 @@ static uint16_t cal[11] = {
 	MODE_WORD	// 0x2B Metering mode configuration
 };
 
-u8g_t u8g;
+static volatile uint64_t ticks = 0;
 
-void init(void)
+static u8g_t u8g;
+
+
+/*
+ * Timer0 overflow interrupt
+ * 
+ * This happens every 1.024 milliseconds
+ */
+
+ISR(TIMER0_OVF_vect)
+{
+	ticks++;
+	// Every 16 ticks, service the button list
+	if(!(ticks & 0xF))
+		button_service();		
+}
+
+
+/*
+ * Calculate a future delay time or time out in milliseconds
+ */
+
+static void set_future_ms(uint32_t msec, uint64_t *future)
+{
+	uint64_t now;
+	uint64_t x;
+	
+	// Critical section start
+	cli();
+	now = ticks;
+	sei();
+	// Critical section end
+	
+	if(msec < 42) // For very short times, don't do adjustment calcs
+		*future = now + msec;
+	else{
+		x = (msec * 1000ULL) / 1024ULL;
+		*future = x;
+	}
+}
+
+/*
+ * Test a future delay time or time out
+ */
+ 
+static int test_future_ms(uint64_t *future)
+{
+	int res;
+	
+	// Critical section start
+	cli();
+	res = (ticks >= *future);
+	sei();
+	// Critical section end
+	
+	return res;		
+}
+
+/*
+ * Delay to a time in the future in milliseconds
+ */
+ 
+
+void static delay_ms(uint32_t value)
+{
+	uint64_t future;
+	
+	set_future_ms(value, &future);
+	while(FALSE == test_future_ms(&future));
+}
+
+
+/*
+ * Initialization function
+ */
+ 
+
+static void init(void)
 {
 #if defined(__AVR__)
-  // select minimal prescaler (max system speed)
-  CLKPR = 0x80;
-  CLKPR = 0x00;
+	// select minimal prescaler (max system speed)
+	CLKPR = 0x80;
+	CLKPR = 0x00;
   
- 
+	// Initialize the serial port
+	stdout = stdin = uartstream_init(9600);
   
-  // Initialize the serial port
-  stdout = stdin = uartstream_init(9600);
+	// Initialize the display
+	u8g_InitHWSPI(&u8g, &u8g_dev_st7920_128x64_hw_spi, PN(1, 1), U8G_PIN_NONE, U8G_PIN_NONE);
   
-  // Initialize the display
-  u8g_InitHWSPI(&u8g, &u8g_dev_st7920_128x64_hw_spi, PN(1, 1), U8G_PIN_NONE, U8G_PIN_NONE);
+	// Initialize EM chip software SPI
+	em_init(); 
   
-   // Initialize EM chip software SPI
-  em_init(); 
+	// Set up timer 0 for 1.024ms interrupts 
+	TCCR0B |= (_BV(CS01) | _BV(CS00)); // Prescaler 16000000/64 =  250KHz
+	TIMSK0 |= _BV(TOIE0); // Enable timer overflow interrupt
+	TCNT0 = 0; // Zero out the timer
   
-  // Enable global interrupts
-  sei(); 
+	// Enable global interrupts
+	sei(); 
 #endif
 }
 
@@ -75,7 +151,7 @@ void init(void)
  * Convert unsigned 16 bit integer to fixed point number
  */
  
-char *to_fixed_decimal_uint16(char *dest, uint8_t len, uint8_t places, uint16_t val){
+static char *to_fixed_decimal_uint16(char *dest, uint8_t len, uint8_t places, uint16_t val){
 	uint16_t rem;
 	uint16_t quot;
 	char *format;
@@ -101,7 +177,7 @@ char *to_fixed_decimal_uint16(char *dest, uint8_t len, uint8_t places, uint16_t 
  * Convert signed 16 bit integer to fixed point number
  */
 
-char *to_fixed_decimal_int16(char *dest, uint8_t len, uint8_t places, int16_t val){
+static char *to_fixed_decimal_int16(char *dest, uint8_t len, uint8_t places, int16_t val){
 	int16_t rem;
 	int16_t quot;
 	char *format = NULL;
@@ -140,7 +216,7 @@ char *to_fixed_decimal_int16(char *dest, uint8_t len, uint8_t places, int16_t va
  * Draw meter data on graphic display
  */
 
-void draw_meter_data(char *volts, char *amps, char *kw, 
+static void draw_meter_data(char *volts, char *amps, char *kw, 
 	char *kva, char *hz, char *pf, char *kvar, char *pa)
 {
 	
@@ -184,12 +260,12 @@ int main(void)
   
   
 	em_write_transaction(0x00,0x789A); // Soft reset
-	_delay_ms(2000);
+	delay_ms(1000);
   
     //Enter meter calibration
 	em_write_transaction(0x20, 0x5678);
     // Write out the meter cal values
-    cs = em_write_block(EM_PLCONSTH, EM_MMODE, cal);
+    cs = em_write_block(EM_PLCONSTH, EM_MMODE, dfl_meter_cal);
     // Write CS1 checksum
     em_write_transaction(EM_CS1, cs);
     // Exit meter calibration

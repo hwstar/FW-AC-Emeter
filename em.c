@@ -16,29 +16,23 @@
  * 
  */
  
+#include "includes.h"
+ 
+#ifdef __AVR__
+ 
+	#define SCLK_HIGH EM_SCLK_PORT |= _BV(EM_SCLK_PIN)
+	#define SCLK_LOW EM_SCLK_PORT &= ~_BV(EM_SCLK_PIN)
+ 
+	#define MOSI_HIGH EM_MOSI_PORT |= _BV(EM_MOSI_PIN)
+	#define MOSI_LOW EM_MOSI_PORT &= ~_BV(EM_MOSI_PIN)
+	#define MOSI_SET(x) if((x)) MOSI_HIGH; else MOSI_LOW
+ 
+	#define MISO_STATE (((EM_MISO_PINPORT & _BV(EM_MISO_PIN)) > 0))
+ 
+	#define CLK_DELAY _delay_us(5)
+	#define START_DELAY _delay_us(500)
 
- 
- #ifdef __AVR__
- 
- #include <avr/io.h>
- #include <util/delay.h>
- #include "pins.h"
- #include "em.h"
- 
- #include <stdio.h>
- 
- #define SCLK_HIGH EM_SCLK_PORT |= _BV(EM_SCLK_PIN)
- #define SCLK_LOW EM_SCLK_PORT &= ~_BV(EM_SCLK_PIN)
- 
- #define MOSI_HIGH EM_MOSI_PORT |= _BV(EM_MOSI_PIN)
- #define MOSI_LOW EM_MOSI_PORT &= ~_BV(EM_MOSI_PIN)
- #define MOSI_SET(x) if((x)) MOSI_HIGH; else MOSI_LOW
- 
- #define MISO_STATE (((EM_MISO_PINPORT & _BV(EM_MISO_PIN)) > 0))
- 
- #define CLK_DELAY _delay_us(5)
- #define START_DELAY _delay_us(500)
- #endif
+#endif
  
  
 
