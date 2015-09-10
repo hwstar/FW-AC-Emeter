@@ -114,7 +114,7 @@ Date        Description
  */
  
 #define UART_RX0_BUFFER_SIZE 16
-#define UART_TX0_BUFFER_SIZE 16
+#define UART_TX0_BUFFER_SIZE 256
 
 /* Enable USART 1, 2, 3 as required */
 #define USART0_ENABLED
