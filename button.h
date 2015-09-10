@@ -21,7 +21,7 @@
 //
 #include "includes.h"
 
-typedef void (*button_event_t)(uint8_t id, uint8_t event);
+// Button data structure
 
 typedef struct button_id_tag {
 	uint8_t state;
@@ -30,7 +30,6 @@ typedef struct button_id_tag {
 	volatile uint8_t *port;
 	uint8_t pin;
 	uint8_t mask;
-	button_event_t event;
 	struct button_id_tag *next;
 } button_data_t;
 
@@ -38,10 +37,12 @@ typedef struct button_id_tag {
 
 // Button events
 
+#define BUTTON_EVENT_NONE 0
 #define BUTTON_EVENT_PRESSED 1
 #define BUTTON_EVENT_RELEASED 2
 
 // Methods
 
-void button_add(button_data_t *button, uint8_t *port, uint8_t pin, uint8_t id, button_event_t event_callback);
+void button_add(button_data_t *button, volatile uint8_t *port, uint8_t pin, uint8_t id);
 void button_service(void);
+bool button_get_event(uint8_t *id, uint8_t *event);

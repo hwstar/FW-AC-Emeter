@@ -3,12 +3,15 @@
 
 
 #if defined(__AVR__)
+#include <inttypes.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <util/delay.h>
+#include <util/atomic.h>
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #endif
+
 
 #include <stdlib.h>
 #include <stdio.h>

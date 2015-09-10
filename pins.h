@@ -33,6 +33,14 @@
  #define EM_MOSI_PORT		PORTD
  #define EM_MOSI_PIN		3
  
+ /*
+  * Button port and pins
+  */
+ 
+ #define BUTTON_PINPORT		PIND
+ #define PIN_BUTTON1		5
+ #define PIN_BUTTON2		6
+ #define PIN_BUTTON3		7
  
  
 

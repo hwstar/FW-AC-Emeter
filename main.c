@@ -41,6 +41,8 @@ static uint16_t dfl_meter_cal[11] = {
 	MODE_WORD	// 0x2B Metering mode configuration
 };
 
+static button_data_t button1, button2, button3;
+
 static volatile uint64_t ticks = 0;
 
 static u8g_t u8g;
@@ -134,6 +136,14 @@ void make_time(char *elap, uint8_t size)
 	snprintf(elap, size, "%lu", (uint32_t) now);
 }
 
+/*
+ * Button handler
+ */
+void button_handler(uint8_t id, uint8_t event)
+{
+
+}
+
 
 
 /*
@@ -161,6 +171,11 @@ static void init(void)
 	TCCR0B |= (_BV(CS01) | _BV(CS00)); // Prescaler 16000000/64 =  250KHz
 	TIMSK0 |= _BV(TOIE0); // Enable timer overflow interrupt
 	TCNT0 = 0; // Zero out the timer
+  
+	// Add the buttons to the button handler
+	button_add(&button1, &BUTTON_PINPORT, PIN_BUTTON1 , 1);
+	button_add(&button2, &BUTTON_PINPORT, PIN_BUTTON2 , 2);
+	button_add(&button3, &BUTTON_PINPORT, PIN_BUTTON3 , 3);
   
 	// Enable global interrupts
 	sei(); 
@@ -330,6 +345,7 @@ int main(void)
 	uint16_t cs;
 	uint8_t screen = 0;
 	int16_t kvai;
+	uint8_t id, event;
 
 	
     init();
@@ -358,8 +374,14 @@ int main(void)
 	
   for(;;)
   { 
+	
+	// Check for button press  
+	if(button_get_event(&id, &event))
+		printf("@@@@@@@@@@ id %d, event: %d\n", id, event);
+	
+		
 
-	/* Get data */
+	// Get data
 
 	// kW
 	twos_compl_to_fixed_decimal_int16(kw,8,3, 
@@ -406,8 +428,8 @@ int main(void)
 
 	// Send meter record
 	make_time(elap, 32);
-	printf("[M: %s, %s, %s, %s, %s, %s, %s, %s, %s]\n",
-		elap, kw, volts, amps, kva, hz, pf, kvar, pa);
+	//printf("[M: %s, %s, %s, %s, %s, %s, %s, %s, %s]\n",
+	//	elap, kw, volts, amps, kva, hz, pf, kvar, pa);
 		
 				
 	/* Update display */ 

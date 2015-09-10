@@ -22,15 +22,86 @@
 
 #include "includes.h"
 
+#define BQ_LENGTH 8 // Must be power of 2 and less than 256
+typedef struct {
+	uint8_t head;
+	uint8_t tail;
+	uint8_t events[8];
+	uint8_t buttons[8];
+} button_queue_t;
+	
+	
+
 enum {BST_WAIT_PRESS = 0, BST_WAIT_RELEASE};
 
 static button_data_t *button_list = NULL;
+static button_queue_t button_queue;
 
+
+/*
+ * Button handler
+ * 
+ * This is called in interrupt context
+ */
+
+static void button_queue_event(uint8_t id, uint8_t event)
+{
+	uint8_t next = ((button_queue.head + 1) & (BQ_LENGTH - 1));
+	
+	
+	
+	
+	if(next == button_queue.tail){
+		// Queue is full, toss the event.
+		//uart0_putc('F');
+		return;
+	}
+	//uart0_putc('.');
+	// Save the event
+	button_queue.events[next] = event;
+	button_queue.buttons[next] = id;
+	// Advance head
+	button_queue.head = next;
+		
+}
+
+/*
+ * Check to see if there is an event in the button queue.
+ *
+ * This is usually called by the main loop in the foreground.
+ */
+ 
+
+bool button_get_event(uint8_t *id, uint8_t *event)
+{
+	uint8_t tail;
+
+	if(!id || !event)
+		return FALSE;
+
+	
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
+		tail = button_queue.tail;
+	
+		if(button_queue.head == tail){
+			// Empty ring buffer, return false
+			return FALSE;
+		}
+		*id = button_queue.buttons[tail];
+		*event = button_queue.events[tail];
+		// Advance tail
+		tail = ((tail + 1) & (BQ_LENGTH - 1));
+		button_queue.tail = tail;	
+	}
+	return TRUE;
+	
+}
+		
 /*
  * Add a button to the list
  */
 
-void button_add(button_data_t *button, uint8_t *port, uint8_t pin, uint8_t id, button_event_t event_callback)
+void button_add(button_data_t *button, volatile uint8_t *port, uint8_t pin, uint8_t id)
 {
 	button_data_t *b;
 
@@ -42,7 +113,6 @@ void button_add(button_data_t *button, uint8_t *port, uint8_t pin, uint8_t id, b
 	button->id = id;
 	button->state = BST_WAIT_PRESS;
 	button->last_button_state = button->mask;
-	button->event = event_callback;
 	button->next = NULL;
 	
 	// Insert it into the list
@@ -70,8 +140,7 @@ void button_service(void)
 		switch(b->state){
 			case BST_WAIT_PRESS: // Wait for button to be pressed
 				if(!cur && b->last_button_state){
-					if(b->event)
-						(*b->event)(b->id, BUTTON_EVENT_PRESSED);
+					button_queue_event(b->id, BUTTON_EVENT_PRESSED);
 					b->last_button_state = cur;
 					b->state = BST_WAIT_RELEASE;
 				}
@@ -79,8 +148,7 @@ void button_service(void)
 				
 			case BST_WAIT_RELEASE: // Wait for button to be released
 				if(cur && !b->last_button_state){
-					if(b->event)
-						(*b->event)(b->id, BUTTON_EVENT_RELEASED);
+					button_queue_event(b->id, BUTTON_EVENT_RELEASED);
 					b->last_button_state = cur;
 					b->state = BST_WAIT_PRESS;
 				}
@@ -90,3 +158,5 @@ void button_service(void)
 		b = b->next; // Next list item
 	}
 }
+	
+
