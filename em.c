@@ -163,7 +163,32 @@ uint16_t em_write_block(uint8_t first, uint8_t last, uint16_t *block)
 	return (((uint16_t) cshigh) << 8) + cslow;
 		
 }
+
+ 
+/*
+ * Read a block of values, and calculate the checksum on the fly.
+ * Return the checksum to the caller.
+ */
+
+uint16_t em_read_block(uint8_t first, uint8_t last, uint16_t *block)
+{
+	uint8_t cshigh = 0, cslow = 0;
+	uint8_t i;
+	for(i = first; i < last + 1; i++){
+		uint8_t j = i - first;
+		block[j] = em_read_transaction(i);
+		// Calculate checksum on the fly
+		// Low byte is modulo 256 sum of all high and low bytes
+		cslow += (uint8_t) ((block[j] & 0xff) + (block[j] >> 8));
+		// High byte is the XOR of all the high and low bytes.
+		cshigh ^= ((uint8_t) (block[j]));
+		cshigh ^= ((uint8_t) (block[j] >> 8));
+	}
+	// Return the checksum
+	return (((uint16_t) cshigh) << 8) + cslow;
 	
+}
+
 		
 	
 	

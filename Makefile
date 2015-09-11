@@ -1,7 +1,7 @@
 #
 #  Generic and Simple Atmel AVR GNU Makefile
 #
-#  Desinged for the gnu-avr tool chain
+#  Designed for the gnu-avr tool chain
 #
 #  Copyright  (c) 2012 Oliver Kraus (olikraus@gmail.com)
 #
@@ -90,7 +90,7 @@ all: $(TARGETNAME).dis $(TARGETNAME).hex
 flash: $(TARGETNAME).dis $(TARGETNAME).hex
 	-killall gtkterm
 	-sleep 1
-	avrdude -F -p $(MCU) -P $(AVRDUDE_PORT) -c $(AVRDUDE_PROGRAMMER) -v -v -U flash:w:$(TARGETNAME).hex -b $(BAUDRATE)
+	avrdude -F -p $(MCU) -P $(AVRDUDE_PORT) -c $(AVRDUDE_PROGRAMMER) -D -v -v -U flash:w:$(TARGETNAME).hex -b $(BAUDRATE)
 	avr-size $(TARGETNAME).elf
 	-gtkterm -p /dev/ttyUSB0  -s 9600 &
 	

@@ -88,4 +88,7 @@ void em_write_transaction(uint8_t addr, uint16_t data);
 uint16_t em_read_transaction(uint8_t addr);
 // Write a block of data
 uint16_t em_write_block(uint8_t first, uint8_t last, uint16_t *block);
+// Read a block of data
+uint16_t em_read_block(uint8_t first, uint8_t last, uint16_t *block);
+
 
