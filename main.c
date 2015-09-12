@@ -45,6 +45,8 @@ typedef struct {
 	unsigned send_measurement_records : 1;		// Send measurement records when enabled
 } switches_t;
 
+ 
+
 
 /*
  * EEPROM variables
@@ -69,8 +71,8 @@ static button_data_t button1, button2, button3;
 static volatile uint64_t ticks = 0;
 
 // Display mode
-typedef enum {DISPMODE_SPLASH=0, DISPMODE_KW, 
-	DISPMODE_CALIB} dispmode_t;
+typedef enum {DISPMODE_SPLASH=0, DISPMODE_KVA, DISPMODE_KW, 
+	DISPMODE_ARMS, DISPMODE_VRMS, DISPMODE_CALIB} dispmode_t;
 static dispmode_t dispmode;
 // Calibration mode
 typedef enum {CALMODE_OFF=0, CALMODE_SMALL_POWER, CALMODE_MEASUREMENT, 
@@ -399,26 +401,105 @@ static void draw_meter_data(char *volts, char *amps, char *kw,
 	char *kva, char *hz, char *pf, char *kvar, char *pa)
 {
 	
-  u8g_SetFont(&u8g, u8g_font_helvR24n);
-  u8g_DrawStr(&u8g, 0, 24, kw);
-  u8g_SetFont(&u8g, u8g_font_5x7);
-  drawstr_P(&u8g, 80, 24, PSTR("kW"));
-  u8g_DrawStr(&u8g, 0, 32, volts); 
-  drawstr_P(&u8g, 35, 32, PSTR("Vrms")); 
-  u8g_DrawStr(&u8g, 60, 32, amps); 
-  drawstr_P(&u8g, 95, 32, PSTR("Arms")); 
-  u8g_DrawStr(&u8g, 0, 40, kva); 
-  drawstr_P(&u8g, 35, 40, PSTR("kVA")); 
-  u8g_DrawStr(&u8g, 60, 40, hz); 
-  drawstr_P(&u8g, 95, 40, PSTR("Hz")); 
-  u8g_DrawStr(&u8g, 0, 48, pf); 
-  drawstr_P(&u8g, 35, 48, PSTR("PF")); 
-  u8g_DrawStr(&u8g, 60, 48, kvar); 
-  drawstr_P(&u8g, 95, 48, PSTR("kVAR")); 
-  u8g_DrawStr(&u8g, 0, 56, pa); 
-  drawstr_P(&u8g, 35, 56, PSTR("PH<")); 
-  
-  drawstr_P(&u8g, 0, 64, PSTR("Next"));
+	const char * l_kw = PSTR("kW");
+	const char * l_vrms = PSTR("Vrms");
+	const char * l_arms = PSTR("Arms");
+	const char * l_kva = PSTR("kVA");
+	const char *l_hz = PSTR("Hz");
+	const char *l_pf = PSTR("PF");
+	const char *l_kvar = PSTR("kVAR");
+	const char *l_ph = PSTR("PH<");
+
+	switch(dispmode){
+		case DISPMODE_KW:
+			u8g_SetFont(&u8g, u8g_font_helvR24n);
+			u8g_DrawStr(&u8g, 0, 24, kw);
+			u8g_SetFont(&u8g, u8g_font_5x7);
+			drawstr_P(&u8g, 100, 24, l_kw);
+			u8g_DrawStr(&u8g, 0, 32, volts); 
+			drawstr_P(&u8g, 35, 32, l_vrms); 
+			u8g_DrawStr(&u8g, 60, 32, amps); 
+			drawstr_P(&u8g, 95, 32, l_arms); 
+			u8g_DrawStr(&u8g, 0, 40, kva); 
+			drawstr_P(&u8g, 35, 40, l_kva); 
+			u8g_DrawStr(&u8g, 60, 40, hz); 
+			drawstr_P(&u8g, 95, 40, l_hz); 
+			u8g_DrawStr(&u8g, 0, 48, pf); 
+			drawstr_P(&u8g, 35, 48, l_pf); 
+			u8g_DrawStr(&u8g, 60, 48, kvar); 
+			drawstr_P(&u8g, 95, 48, l_kvar); 
+			u8g_DrawStr(&u8g, 0, 56, pa); 
+			drawstr_P(&u8g, 35, 56, l_ph); 
+			break;
+			
+		case DISPMODE_KVA:
+			u8g_SetFont(&u8g, u8g_font_helvR24n);
+			u8g_DrawStr(&u8g, 0, 24, kva);
+			u8g_SetFont(&u8g, u8g_font_5x7);
+			drawstr_P(&u8g, 100, 24, l_kva);
+			u8g_DrawStr(&u8g, 0, 32, volts); 
+			drawstr_P(&u8g, 35, 32, l_vrms); 
+			u8g_DrawStr(&u8g, 60, 32, amps); 
+			drawstr_P(&u8g, 95, 32, l_arms); 
+			u8g_DrawStr(&u8g, 0, 40, kw); 
+			drawstr_P(&u8g, 35, 40, l_kw); 
+			u8g_DrawStr(&u8g, 60, 40, hz); 
+			drawstr_P(&u8g, 95, 40, l_hz); 
+			u8g_DrawStr(&u8g, 0, 48, pf); 
+			drawstr_P(&u8g, 35, 48, l_pf); 
+			u8g_DrawStr(&u8g, 60, 48, kvar); 
+			drawstr_P(&u8g, 95, 48, l_kvar); 
+			u8g_DrawStr(&u8g, 0, 56, pa); 
+			drawstr_P(&u8g, 35, 56, l_ph); 
+			break;
+			
+		case DISPMODE_ARMS:
+			u8g_SetFont(&u8g, u8g_font_helvR24n);
+			u8g_DrawStr(&u8g, 0, 24, amps);
+			u8g_SetFont(&u8g, u8g_font_5x7);
+			drawstr_P(&u8g, 100, 24, l_arms);
+			u8g_DrawStr(&u8g, 0, 32, volts); 
+			drawstr_P(&u8g, 35, 32, l_vrms); 
+			u8g_DrawStr(&u8g, 60, 32, kva); 
+			drawstr_P(&u8g, 95, 32, l_kva); 
+			u8g_DrawStr(&u8g, 0, 40, kw); 
+			drawstr_P(&u8g, 35, 40, l_kw); 
+			u8g_DrawStr(&u8g, 60, 40, hz); 
+			drawstr_P(&u8g, 95, 40, l_hz); 
+			u8g_DrawStr(&u8g, 0, 48, pf); 
+			drawstr_P(&u8g, 35, 48, l_pf); 
+			u8g_DrawStr(&u8g, 60, 48, kvar); 
+			drawstr_P(&u8g, 95, 48, l_kvar); 
+			u8g_DrawStr(&u8g, 0, 56, pa); 
+			drawstr_P(&u8g, 35, 56, l_ph); 
+			break;
+			
+		case DISPMODE_VRMS:
+			u8g_SetFont(&u8g, u8g_font_helvR24n);
+			u8g_DrawStr(&u8g, 0, 24, volts);
+			u8g_SetFont(&u8g, u8g_font_5x7);
+			drawstr_P(&u8g, 100, 24, l_vrms);
+			u8g_DrawStr(&u8g, 0, 32, amps); 
+			drawstr_P(&u8g, 35, 32, l_arms); 
+			u8g_DrawStr(&u8g, 60, 32, kva); 
+			drawstr_P(&u8g, 95, 32, l_kva); 
+			u8g_DrawStr(&u8g, 0, 40, kw); 
+			drawstr_P(&u8g, 35, 40, l_kw); 
+			u8g_DrawStr(&u8g, 60, 40, hz); 
+			drawstr_P(&u8g, 95, 40, l_hz); 
+			u8g_DrawStr(&u8g, 0, 48, pf); 
+			drawstr_P(&u8g, 35, 48, l_pf); 
+			u8g_DrawStr(&u8g, 60, 48, kvar); 
+			drawstr_P(&u8g, 95, 48, l_kvar); 
+			u8g_DrawStr(&u8g, 0, 56, pa); 
+			drawstr_P(&u8g, 35, 56, l_ph); 
+			break;
+				
+		default:
+			break;
+	}
+	
+	drawstr_P(&u8g, 0, 64, PSTR("Next"));
   
 }
 
@@ -582,15 +663,46 @@ static void serial_service(void)
 	}
 }
 
+/* 
+ * Check button event queue and act on a button
+ */
 
 void check_buttons(void)
 {
 	uint8_t id, event;
 	
 	if(button_get_event(&id, &event)){
-
+		// If displaying data
+		if((dispmode >= DISPMODE_KVA) && (dispmode <= DISPMODE_VRMS)){
+			// If button #1 is released
+			if((id == 1) && (event == BUTTON_EVENT_RELEASED)){
+				clear_screen();
+				// Advance to next display screen
+				switch(dispmode){
+					case DISPMODE_KW:
+						dispmode = DISPMODE_KVA;
+						break;
+						
+					case DISPMODE_KVA:
+						dispmode = DISPMODE_ARMS;
+						break;
+						
+					case DISPMODE_ARMS:
+						dispmode = DISPMODE_VRMS;
+						break;
+						
+					case DISPMODE_VRMS:
+						dispmode = DISPMODE_KW;
+						break;
+											
+					default:
+						dispmode = DISPMODE_KVA;
+						break;
+						
+				}
+			}
+		}
 	}
-
 }
 
 /*
@@ -678,7 +790,8 @@ int main(void)
 		
 		// Handle splash screen  
 		if((dispmode == DISPMODE_SPLASH) && test_future_ms(&timer)){
-			dispmode = DISPMODE_KW;
+			// Go to default display mode
+			dispmode = DISPMODE_KVA;
 			clear_screen();
 		}
 	 
@@ -689,6 +802,9 @@ int main(void)
 		switch(dispmode){
 		
 			case DISPMODE_KW:
+			case DISPMODE_KVA:
+			case DISPMODE_ARMS:
+			case DISPMODE_VRMS:
 				// Get data
 				// kW
 				twos_compl_to_fixed_decimal_int16(kw,8,3, 
@@ -755,6 +871,9 @@ int main(void)
 					break;
 				
 				case DISPMODE_KW:
+				case DISPMODE_KVA:
+				case DISPMODE_VRMS:
+				case DISPMODE_ARMS:
 					draw_meter_data(volts, amps, kw, kva, hz, pf, 
 						kvar, pa);
 					break;

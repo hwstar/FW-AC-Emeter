@@ -58,8 +58,8 @@ static void button_queue_event(uint8_t id, uint8_t event)
 	}
 	//uart0_putc('.');
 	// Save the event
-	button_queue.events[next] = event;
-	button_queue.buttons[next] = id;
+	button_queue.events[button_queue.head] = event;
+	button_queue.buttons[button_queue.head] = id;
 	// Advance head
 	button_queue.head = next;
 		
@@ -78,6 +78,7 @@ bool button_get_event(uint8_t *id, uint8_t *event)
 
 	if(!id || !event)
 		return FALSE;
+		
 
 	
 	ATOMIC_BLOCK(ATOMIC_RESTORESTATE){
@@ -87,6 +88,12 @@ bool button_get_event(uint8_t *id, uint8_t *event)
 			// Empty ring buffer, return false
 			return FALSE;
 		}
+		
+		// DEBUG
+		//for(int i = 0; i < 8; i++)
+		//	printf("%02x,%02x ", button_queue.buttons[i], button_queue.events[i]);
+		//printf("\n");
+
 		*id = button_queue.buttons[tail];
 		*event = button_queue.events[tail];
 		// Advance tail
