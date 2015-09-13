@@ -79,6 +79,9 @@ typedef enum {CALMODE_OFF=0, CALMODE_SMALL_POWER, CALMODE_MEASUREMENT,
 	CALMODE_ENERGY} calmode_t;
 static calmode_t calmode;
 
+// Total forward active energy
+static uint32_t fae_total;
+
 // System soft switches
 static switches_t switches;
 
@@ -172,6 +175,16 @@ void make_time(char *elap, uint8_t size)
 	// FIXME: Small printf doesn't seem to support uint64_t
 	// elapsed time will overflow after appx. 1149 power on hrs.
 	snprintf_P(elap, size, PSTR("%lu"), (uint32_t) now);
+}
+
+/*
+ * Debug function. Dump registers as a set
+ */
+
+void dump_words(const uint16_t *buffer, uint8_t addr, uint8_t len)
+{
+	for(uint8_t i = 0; i < len; i++, addr++)
+		printf_P(PSTR("%02X:%04X\n"), addr, buffer[i]);
 }
 
 /* 
@@ -537,6 +550,8 @@ static void process_command(char *line)
 	uint8_t len = strlen(line);
 	static uint8_t upper = 0, lower = 0;
 	static uint16_t *cal_data = NULL;
+	static uint16_t dump_buf[16];
+	uint16_t cs;
 	
 	if((len >= 2) && ('[' == line[0])){ // Open bracket starts a command
 		
@@ -557,6 +572,25 @@ static void process_command(char *line)
 					// Calibration sub commands
 					switch(line[2]){
 						
+						case 'd':
+							// Dump chip registers (DEBUG aid)
+							printf_P(PSTR("*** Status and special registers ***\n"));
+							em_read_block(EM_SYSSTATUS, EM_SMALLPMOD, dump_buf);
+							dump_words(dump_buf, EM_SYSSTATUS, 4);
+							printf_P(PSTR("*** Metering Cal Registers ***\n"));
+							em_read_block(EM_PLCONSTH, EM_MMODE, dump_buf);
+							dump_words(dump_buf, EM_PLCONSTH, 12);
+							printf_P(PSTR("*** Measurement Cal Registers ***\n"));
+							em_read_block(EM_UGAIN, EM_QOFFSETN, dump_buf);
+							dump_words(dump_buf, EM_UGAIN, 11);
+							printf_P(PSTR("*** Energy registers ***\n"));
+							em_read_block(EM_APENERGY, EM_ENSTATUS, dump_buf);
+							dump_words(dump_buf, EM_APENERGY, 7);
+							printf_P(PSTR("*** Measurement registers ***\n"));
+							dump_words(dump_buf, EM_IRMS, 8);
+							break;
+							
+				
 						// Enter energy calibration mode
 						case 'e':
 							if(calmode == CALMODE_OFF){
@@ -568,7 +602,9 @@ static void process_command(char *line)
 								// so we need to rewrite our calibration
 								// values back out to the em chip
 								cal_data = eecal.meter_cal;
-								em_write_block(lower, upper, cal_data);
+								cs = em_write_block(lower, upper, cal_data);
+								//dump_words(cal_data, lower, (upper - lower) + 1);	// DEBUG
+								//printf("Meter Checksum: %04X\n", cs); // DEBUG 			
 								printf_P(PSTR("[ce]\n"));
 							}
 							break;
@@ -584,7 +620,9 @@ static void process_command(char *line)
 								// so we need to rewrite our calibration
 								// values back out to the em chip	
 								cal_data = eecal.measure_cal;
-								em_write_block(lower, upper, cal_data);					
+								cs = em_write_block(lower, upper, cal_data);
+								//dump_words(cal_data, lower, (upper - lower) + 1);	 // DEBUG
+								//printf("Measurement Checksum: %04X\n", cs); // DEBUG 						
 								printf_P(PSTR("[cm]\n"));
 							}
 							break;
@@ -592,18 +630,18 @@ static void process_command(char *line)
 						
 						case 'p':
 							// Small power mode
-							if(valid_switch(line + 2)){
-								if(line[3] == '1')
+							if(valid_switch(line + 3)){
+								if(line[4] == '1')
 									em_write_transaction(EM_SMALLPMOD, 0xA987);
 								else
 									em_write_transaction(EM_SMALLPMOD, 0);
-								printf_P(PSTR("[cp:%c]\n"), line[3]);
+								printf_P(PSTR("[cp:%c]\n"), line[4]);
 							}
 							break;
 							
 						case 'w':
 							// Write a calibration register value to the em chip
-							if(calmode != CALMODE_OFF){
+							if((len >= 10) && (calmode != CALMODE_OFF)){
 								if(':' == line[3]){
 									p = strchr(line + 4, ',');
 									if(p){
@@ -611,11 +649,14 @@ static void process_command(char *line)
 										reg = (uint8_t) strtoul(line + 4, NULL, 16);
 										val = (uint16_t) strtoul(p, NULL, 16);
 										// Check to see if it is within bounds
+										//printf("Reg: %02X Lower: %02X, Upper: %02X\n", reg, lower, upper);
 										if((reg >= lower) && (reg <= upper)){
 											// Update value in memory
 											cal_data[reg - lower] = val;
+											//printf("Memory offset: %02X\n", reg - lower);
 											// Update value on the em chip
 											em_write_transaction(reg, val);
+											//dump_words(cal_data, lower, (upper - lower) + 1); // DEBUG			
 											printf_P(PSTR("[cw:%02X,%04X]\n"), reg, val);
 										}
 									}
@@ -625,22 +666,21 @@ static void process_command(char *line)
 							break;
 							
 						case 'r':
-							//printf("upper: %02X, lower: %02x, len: %d\n", upper, lower, len);
-							// Read a calibration register value from the em chip
-							if(CALMODE_OFF != calmode){
-								// Convert input string to register address
-								if((':' == line[3])){
-									reg = (uint8_t) strtoul(line + 4, NULL, 16);
-									// Check to see if it is within bounds
-									if((reg >= lower) && (reg <= upper)){
-										// Convert to an offset
-										uint8_t index = reg - lower;
-										// Return the value
-										printf_P(PSTR("[cr:%02X,%04X]\n"), reg, cal_data[index]);
-									}
+	
+							// Read a register value from the em chip
+							// Convert input string to register address
+							if((len >= 6 ) && (':' == line[3])){
+								reg = (uint8_t) strtoul(line + 4, NULL, 16);
+								//printf("Reg: %02X\n", reg);
+								// Check to see if it is within bounds
+								if(reg <= 0x6F){
+									// Convert to an offset
+									// Return the value
+									printf_P(PSTR("[cr:%02X,%04X]\n"), reg, em_read_transaction(reg));
 								}
+							}
 									
-							}	
+				
 							break;
 							
 							
@@ -657,29 +697,40 @@ static void process_command(char *line)
 								//printf("cal_data: %04X, eecal.measure_cal: %04X, eecal.meter_cal: %04X\n",
 								//(uint16_t) cal_data, (uint16_t) eecal.measure_cal, (uint16_t) eecal.meter_cal); // DEBUG
 								//printf("upper: %02X lower: %02X\n", upper, lower);
-								uint16_t cs = em_write_block(lower, upper, cal_data);
+								cs = em_write_block(lower, upper, cal_data);
 			
 								// Write checksum
 								if(calmode == CALMODE_MEASUREMENT){
+									//printf("Write measurement checksum: %04X\n", cs);
 									em_write_transaction(EM_CS2, cs); // Write checksum
 								}
 								else{
+									//printf("Write meter checkum: %04X\n", cs);
 									em_write_transaction(EM_CS1, cs); // Write checksum
 								}
-								// Update all calibration data in EEPROM if command was [cs]
-								if('s' == line[2]){
-									eecal.cal_crc = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
-									eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
-								}
+							
+								//dump_words(cal_data, lower, (upper - lower) + 1); // DEBUG				
 								// Exit calibration mode
 								if(calmode == CALMODE_MEASUREMENT){
 									em_write_transaction(EM_ADJSTART, 0x8765); // Exit
 								}
 								else{
 										em_write_transaction(EM_CALSTART, 0x8765); // Exit
-								}	
+								}
+								
+								// Update all calibration data in EEPROM if command was [cs]
+								// This needs to happen after we write the checksum to the em chip
+								// and exit calibration mode as the delay incurred will result in a 
+								// checksum error on the em chip
+								if('s' == line[2]){
+									eecal.cal_crc = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
+									eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
+								}
+									
 								// Turn calibration mode off
 								calmode = CALMODE_OFF;
+								// Wait for checksum result
+								delay_ms(100);
 								// Tell host we are done
 								printf_P(PSTR("[c%c:SYSSTAT,%04X]\n"), line[2], em_read_transaction(EM_SYSSTATUS));
 							}
@@ -778,6 +829,10 @@ void check_buttons(void)
 						
 				}
 			}
+			if((id == 3) && (event == BUTTON_EVENT_RELEASED)){ /* Menu */
+				fae_total = 0UL;
+			}
+				
 		}
 	}
 }
@@ -792,7 +847,6 @@ int main(void)
 	static char volts[8], amps[8], kw[8], kva[8], hz[8], pf[8], kvar[8]; 
 	static char pa[8], kwh[10];
 	static char elap[32];
-	static uint32_t fae_total;
 	uint32_t calc_kwh;
 	uint16_t res;
 	uint16_t cs;
@@ -820,7 +874,7 @@ int main(void)
 		printf_P(PSTR("[s:EEPROM,AUTOINIT]\n"));
 		// Read the defaults from the chip
 		eecal.sig = 0x55AA;
-		em_read_block(EM_PLCONSTL, EM_MMODE, eecal.meter_cal);
+		em_read_block(EM_PLCONSTH, EM_MMODE, eecal.meter_cal);
 		em_read_block(EM_UGAIN, EM_QOFFSETN, eecal.measure_cal);
 
 			
@@ -832,7 +886,7 @@ int main(void)
 
 	}	
 	
-  
+ 
     //Enter meter calibration
 	em_write_transaction(EM_CALSTART, 0x5678);
 	// Override the power line constant
@@ -846,6 +900,9 @@ int main(void)
     em_write_transaction(EM_CS1, cs);
     // Exit meter calibration
     em_write_transaction(EM_CALSTART, 0x8765); 
+    delay_ms(100);
+    // Send meter status
+    printf_P(PSTR("[s:SYSSTAT,%04X]\n"), em_read_transaction(EM_SYSSTATUS));
 	
 	// Enter measurement calibration
 	em_write_transaction(EM_ADJSTART, 0x5678);
@@ -855,9 +912,9 @@ int main(void)
 	em_write_transaction(EM_CS2, cs);
 	// Exit measurement calibration
 	em_write_transaction(EM_ADJSTART, 0x8765);
+	delay_ms(100);
 
 	
-	delay_ms(10);
 	// Send meter status
 	printf_P(PSTR("[s:SYSSTAT,%04X]\n"), em_read_transaction(EM_SYSSTATUS));
 	
