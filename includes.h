@@ -10,6 +10,7 @@
 #include <util/atomic.h>
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
+#include <avr/wdt.h>
 #endif
 
 

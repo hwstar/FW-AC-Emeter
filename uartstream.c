@@ -29,7 +29,7 @@ FILE *uartstream_init(uint32_t baudrate)
 
 static int uartstream_putchar(char c, FILE *stream)
 {
-	if (c == '\n') 
+	if ('\n' == c) 
 		uartstream_putchar('\r', stream);
 	uart0_putc((uint8_t) c);
 	return 0;
@@ -45,7 +45,7 @@ static int uartstream_getchar(FILE *stream)
 	while(1){
 		res = uart0_getc();
 		if(res < 256){
-			if(res == '\r')
+			if('\r' == res)
 				res = '\n';
 			break;
 		}

@@ -15,7 +15,7 @@
 
 #define IBASIC 1								// Basic current (A)
 #define VREF 240								// Reference voltage (V)
-#define IGAIN 24								// Current Gain
+#define IGAIN 8									// Current Gain
 #define MVISAMPLE 1								// Millivolts across shunt resistor at basic current
 #define MVVSAMPLE 248							// Millivolts at bottom tap of voltage divider at vref
 #define MC 3200									// Metering pulse constant (impulses/kWh)
@@ -72,7 +72,7 @@ static volatile uint64_t ticks = 0;
 
 // Display mode
 typedef enum {DISPMODE_SPLASH=0, DISPMODE_KVA, DISPMODE_KW, 
-	DISPMODE_ARMS, DISPMODE_VRMS, DISPMODE_CALIB} dispmode_t;
+	DISPMODE_ARMS, DISPMODE_VRMS} dispmode_t;
 static dispmode_t dispmode;
 // Calibration mode
 typedef enum {CALMODE_OFF=0, CALMODE_SMALL_POWER, CALMODE_MEASUREMENT, 
@@ -99,7 +99,6 @@ ISR(TIMER0_OVF_vect)
 	if(!(ticks & 0xF))
 		button_service();		
 }
-
 
 /*
  * Calculate a future delay time or time out in milliseconds
@@ -248,7 +247,7 @@ uint8_t places, uint16_t val){
 	uint16_t quot;
 	const char *format;
 	
-	if(places == 2){
+	if(2 == places){
 		rem = val % 100;
 		quot = val / 100;
 		format = PSTR("%d.%02d");
@@ -278,12 +277,12 @@ uint8_t places, uint16_t val){
 	
 	val = val & 0x7FFF;// Strip sign bit
 	
-	if(places == 1){
+	if(1 == places){
 		rem = val%10;
 		quot = val/10;
 		format = PSTR("%d.%d");
 	}
-	else if(places == 2){
+	else if(2 == places){
 		rem = val%100;
 		quot = val/100;
 		format = PSTR("%d.%02d");
@@ -317,12 +316,12 @@ uint8_t places, int16_t val){
 	int16_t quot;
 	const char *format = NULL;
 	
-	if(places == 1){
+	if(1 == places){
 		rem = val%10;
 		quot = val/10;
 		format = PSTR("%d.%d");
 	}
-	else if(places == 2){
+	else if(2 == places){
 		rem = val%100;
 		quot = val/100;
 		format = PSTR("%d.%02d");
@@ -398,115 +397,129 @@ static void draw_splash(void)
  */
 
 static void draw_meter_data(char *volts, char *amps, char *kw, 
-	char *kva, char *hz, char *pf, char *kvar, char *pa)
+	char *kva, char *hz, char *pf, char *kvar, char *pa, char *kwh)
 {
 	
-	const char * l_kw = PSTR("kW");
-	const char * l_vrms = PSTR("Vrms");
-	const char * l_arms = PSTR("Arms");
-	const char * l_kva = PSTR("kVA");
+	const char *l_kw = PSTR("kW");
+	const char *l_vrms = PSTR("Vrms");
+	const char *l_arms = PSTR("Arms");
+	const char *l_kva = PSTR("kVA");
 	const char *l_hz = PSTR("Hz");
 	const char *l_pf = PSTR("PF");
 	const char *l_kvar = PSTR("kVAR");
 	const char *l_ph = PSTR("PH<");
+	const char *l_kwh = PSTR("kWh");
 
 	switch(dispmode){
 		case DISPMODE_KW:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
 			u8g_DrawStr(&u8g, 0, 24, kw);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 100, 24, l_kw);
+			drawstr_P(&u8g, 105, 24, l_kw);
 			u8g_DrawStr(&u8g, 0, 32, volts); 
 			drawstr_P(&u8g, 35, 32, l_vrms); 
 			u8g_DrawStr(&u8g, 60, 32, amps); 
-			drawstr_P(&u8g, 95, 32, l_arms); 
+			drawstr_P(&u8g, 105, 32, l_arms); 
 			u8g_DrawStr(&u8g, 0, 40, kva); 
 			drawstr_P(&u8g, 35, 40, l_kva); 
 			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 95, 40, l_hz); 
+			drawstr_P(&u8g, 105, 40, l_hz); 
 			u8g_DrawStr(&u8g, 0, 48, pf); 
 			drawstr_P(&u8g, 35, 48, l_pf); 
 			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 95, 48, l_kvar); 
+			drawstr_P(&u8g, 105, 48, l_kvar); 
 			u8g_DrawStr(&u8g, 0, 56, pa); 
-			drawstr_P(&u8g, 35, 56, l_ph); 
+			drawstr_P(&u8g, 35, 56, l_ph);
+			u8g_DrawStr(&u8g, 60, 56, kwh);
+			drawstr_P(&u8g, 105, 56, l_kwh); 
 			break;
 			
 		case DISPMODE_KVA:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
 			u8g_DrawStr(&u8g, 0, 24, kva);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 100, 24, l_kva);
+			drawstr_P(&u8g, 105, 24, l_kva);
 			u8g_DrawStr(&u8g, 0, 32, volts); 
 			drawstr_P(&u8g, 35, 32, l_vrms); 
 			u8g_DrawStr(&u8g, 60, 32, amps); 
-			drawstr_P(&u8g, 95, 32, l_arms); 
+			drawstr_P(&u8g, 105, 32, l_arms); 
 			u8g_DrawStr(&u8g, 0, 40, kw); 
 			drawstr_P(&u8g, 35, 40, l_kw); 
 			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 95, 40, l_hz); 
+			drawstr_P(&u8g, 105, 40, l_hz); 
 			u8g_DrawStr(&u8g, 0, 48, pf); 
 			drawstr_P(&u8g, 35, 48, l_pf); 
 			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 95, 48, l_kvar); 
+			drawstr_P(&u8g, 105, 48, l_kvar); 
 			u8g_DrawStr(&u8g, 0, 56, pa); 
 			drawstr_P(&u8g, 35, 56, l_ph); 
+			u8g_DrawStr(&u8g, 60, 56, kwh);
+			drawstr_P(&u8g, 105, 56, l_kwh);
 			break;
 			
 		case DISPMODE_ARMS:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
 			u8g_DrawStr(&u8g, 0, 24, amps);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 100, 24, l_arms);
+			drawstr_P(&u8g, 105, 24, l_arms);
 			u8g_DrawStr(&u8g, 0, 32, volts); 
 			drawstr_P(&u8g, 35, 32, l_vrms); 
 			u8g_DrawStr(&u8g, 60, 32, kva); 
-			drawstr_P(&u8g, 95, 32, l_kva); 
+			drawstr_P(&u8g, 105, 32, l_kva); 
 			u8g_DrawStr(&u8g, 0, 40, kw); 
 			drawstr_P(&u8g, 35, 40, l_kw); 
 			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 95, 40, l_hz); 
+			drawstr_P(&u8g, 105, 40, l_hz); 
 			u8g_DrawStr(&u8g, 0, 48, pf); 
 			drawstr_P(&u8g, 35, 48, l_pf); 
 			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 95, 48, l_kvar); 
+			drawstr_P(&u8g, 105, 48, l_kvar); 
 			u8g_DrawStr(&u8g, 0, 56, pa); 
 			drawstr_P(&u8g, 35, 56, l_ph); 
+			u8g_DrawStr(&u8g, 60, 56, kwh);
+			drawstr_P(&u8g, 105, 56, l_kwh);
 			break;
 			
 		case DISPMODE_VRMS:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
 			u8g_DrawStr(&u8g, 0, 24, volts);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 100, 24, l_vrms);
+			drawstr_P(&u8g, 105, 24, l_vrms);
 			u8g_DrawStr(&u8g, 0, 32, amps); 
 			drawstr_P(&u8g, 35, 32, l_arms); 
 			u8g_DrawStr(&u8g, 60, 32, kva); 
-			drawstr_P(&u8g, 95, 32, l_kva); 
+			drawstr_P(&u8g, 105, 32, l_kva); 
 			u8g_DrawStr(&u8g, 0, 40, kw); 
 			drawstr_P(&u8g, 35, 40, l_kw); 
 			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 95, 40, l_hz); 
+			drawstr_P(&u8g, 105, 40, l_hz); 
 			u8g_DrawStr(&u8g, 0, 48, pf); 
 			drawstr_P(&u8g, 35, 48, l_pf); 
 			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 95, 48, l_kvar); 
+			drawstr_P(&u8g, 105, 48, l_kvar); 
 			u8g_DrawStr(&u8g, 0, 56, pa); 
 			drawstr_P(&u8g, 35, 56, l_ph); 
+			u8g_DrawStr(&u8g, 60, 56, kwh);
+			drawstr_P(&u8g, 105, 56, l_kwh);
 			break;
 				
 		default:
 			break;
 	}
 	
-	drawstr_P(&u8g, 0, 64, PSTR("Next"));
+	drawstr_P(&u8g, 8, 64, PSTR("Next"));
+	drawstr_P(&u8g, 100, 64, PSTR("Menu"));
   
 }
 
+/*
+ * Test for a valid switch.
+ */
+
 static bool valid_switch(char *line)
 {
-	if(strlen(line) >= 1){
-		if((line[0] == '1')||(line[0] == '0'))
+	if((strlen(line) >= 2) && (':' == line[0])){
+		if(('1' == line[1])||('0' == line[1]))
 			return TRUE;
 	}
 	return FALSE;	
@@ -522,48 +535,88 @@ static void process_command(char *line)
 	char *p;
 	uint16_t reg,val;
 	uint8_t len = strlen(line);
+	static uint8_t upper = 0, lower = 0;
+	static uint16_t *cal_data = NULL;
 	
-	if((len >= 2) && (line[0] == '[')){
+	if((len >= 2) && ('[' == line[0])){ // Open bracket starts a command
 		
 		switch(line[1]){
 			case 'm':
 				if(valid_switch(line + 2)){
-					if(line[2] == '1')
+					if('1' == line[3])
 						switches.send_measurement_records = TRUE;
 					else
 						switches.send_measurement_records = FALSE;
-					printf_P(PSTR("[m%c]\n"),line[2]);
+					printf_P(PSTR("[m:%c]\n"), line[3]);
 				}
-				break;
+				break;			
+				
 		
 			case 'c':
-				if(strlen(line) >= 3){
+				if(len >= 3){
 					// Calibration sub commands
 					switch(line[2]){
+						
+						// Enter energy calibration mode
+						case 'e':
+							if(calmode == CALMODE_OFF){
+								em_write_transaction(EM_CALSTART, 0x5678);
+								calmode = CALMODE_ENERGY;
+								lower = EM_PLCONSTH;
+								upper = EM_MMODE;
+								// Registers will be set to default,
+								// so we need to rewrite our calibration
+								// values back out to the em chip
+								cal_data = eecal.meter_cal;
+								em_write_block(lower, upper, cal_data);
+								printf_P(PSTR("[ce]\n"));
+							}
+							break;
+							
 						// Enter measurement calibration mode
 						case 'm':
-							em_write_transaction(EM_ADJSTART, 0x5678);						
-							calmode = CALMODE_MEASUREMENT;
-							printf_P(PSTR("[cm]\n"));
+							if(calmode == CALMODE_OFF){
+								em_write_transaction(EM_ADJSTART, 0x5678);
+								calmode = CALMODE_MEASUREMENT;
+								lower = EM_UGAIN;
+								upper = EM_QOFFSETN;
+								// Registers will be set to default,
+								// so we need to rewrite our calibration
+								// values back out to the em chip	
+								cal_data = eecal.measure_cal;
+								em_write_block(lower, upper, cal_data);					
+								printf_P(PSTR("[cm]\n"));
+							}
+							break;
 							
+						
+						case 'p':
+							// Small power mode
+							if(valid_switch(line + 2)){
+								if(line[3] == '1')
+									em_write_transaction(EM_SMALLPMOD, 0xA987);
+								else
+									em_write_transaction(EM_SMALLPMOD, 0);
+								printf_P(PSTR("[cp:%c]\n"), line[3]);
+							}
 							break;
 							
 						case 'w':
 							// Write a calibration register value to the em chip
-							if(CALMODE_MEASUREMENT == calmode){
-								if(line[3] == ':'){
+							if(calmode != CALMODE_OFF){
+								if(':' == line[3]){
 									p = strchr(line + 4, ',');
 									if(p){
 										*p++ = 0;
 										reg = (uint8_t) strtoul(line + 4, NULL, 16);
 										val = (uint16_t) strtoul(p, NULL, 16);
 										// Check to see if it is within bounds
-										if((reg >= EM_UGAIN) && (reg <= EM_QOFFSETN)){
-											printf_P(PSTR("[cw:%02X,%04X]\n"), reg, val);
+										if((reg >= lower) && (reg <= upper)){
 											// Update value in memory
-											eecal.measure_cal[reg - EM_UGAIN] = val;
+											cal_data[reg - lower] = val;
 											// Update value on the em chip
 											em_write_transaction(reg, val);
+											printf_P(PSTR("[cw:%02X,%04X]\n"), reg, val);
 										}
 									}
 								}
@@ -572,18 +625,18 @@ static void process_command(char *line)
 							break;
 							
 						case 'r':
+							//printf("upper: %02X, lower: %02x, len: %d\n", upper, lower, len);
 							// Read a calibration register value from the em chip
-							if(CALMODE_MEASUREMENT == calmode){
+							if(CALMODE_OFF != calmode){
 								// Convert input string to register address
-								if((line[3] == ':')){
+								if((':' == line[3])){
 									reg = (uint8_t) strtoul(line + 4, NULL, 16);
 									// Check to see if it is within bounds
-									//printf("foop1\n");
-									if((reg >= EM_UGAIN) && (reg <= EM_QOFFSETN)){
-										//printf("foop2\n");
+									if((reg >= lower) && (reg <= upper)){
 										// Convert to an offset
-										uint8_t index = reg - EM_UGAIN;
-										printf_P(PSTR("[cr:%02X,%04X]\n"), reg, eecal.measure_cal[index]);
+										uint8_t index = reg - lower;
+										// Return the value
+										printf_P(PSTR("[cr:%02X,%04X]\n"), reg, cal_data[index]);
 									}
 								}
 									
@@ -592,24 +645,47 @@ static void process_command(char *line)
 							
 							
 						case 's': 
-						    // Write cal data to eeprom and exit
-							if(calmode == CALMODE_MEASUREMENT){
-								// Write it as a block to the chip so
+						case 'x':
+							// x: Write data to em chip, but not eeprom and exit
+						    // s: Write cal data to both the em chip and eeprom and exit
+							if(CALMODE_OFF != calmode){
+								// Host send at least one write command.
+								//
+								// Rewrite everything as a block to the chip so
 								// a checksum can be calculated.
-								uint16_t cs = em_write_block(EM_UGAIN, EM_QOFFSETN, eecal.measure_cal);
-								// Write em chip checksuim
-								em_write_transaction(EM_CS2, cs);
-								// Exit measurement calibration
-								em_write_transaction(EM_ADJSTART, 0x0);
-								 // Write data back out to EEPROM
-								eecal.cal_crc = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
-								eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
 								
-								printf_P(PSTR("[cs]\n"));
+								//printf("cal_data: %04X, eecal.measure_cal: %04X, eecal.meter_cal: %04X\n",
+								//(uint16_t) cal_data, (uint16_t) eecal.measure_cal, (uint16_t) eecal.meter_cal); // DEBUG
+								//printf("upper: %02X lower: %02X\n", upper, lower);
+								uint16_t cs = em_write_block(lower, upper, cal_data);
+			
+								// Write checksum
+								if(calmode == CALMODE_MEASUREMENT){
+									em_write_transaction(EM_CS2, cs); // Write checksum
+								}
+								else{
+									em_write_transaction(EM_CS1, cs); // Write checksum
+								}
+								// Update all calibration data in EEPROM if command was [cs]
+								if('s' == line[2]){
+									eecal.cal_crc = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
+									eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
+								}
+								// Exit calibration mode
+								if(calmode == CALMODE_MEASUREMENT){
+									em_write_transaction(EM_ADJSTART, 0x8765); // Exit
+								}
+								else{
+										em_write_transaction(EM_CALSTART, 0x8765); // Exit
+								}	
+								// Turn calibration mode off
+								calmode = CALMODE_OFF;
+								// Tell host we are done
+								printf_P(PSTR("[c%c:SYSSTAT,%04X]\n"), line[2], em_read_transaction(EM_SYSSTATUS));
 							}
-							clear_screen();
-							calmode = CALMODE_OFF;
 							break;
+							
+
 							
 						default:
 							break;
@@ -649,7 +725,7 @@ static void serial_service(void)
 	}
 	c = (char) uart0_getc();
 	
-	if(c == '\r' || c == '\n'){
+	if(('\r' == c) || ('\n' == c)){
 		if(lpos){
 			line[lpos] = 0;
 			lpos = 0;
@@ -694,6 +770,7 @@ void check_buttons(void)
 					case DISPMODE_VRMS:
 						dispmode = DISPMODE_KW;
 						break;
+						
 											
 					default:
 						dispmode = DISPMODE_KVA;
@@ -713,8 +790,10 @@ void check_buttons(void)
 int main(void)
 {
 	static char volts[8], amps[8], kw[8], kva[8], hz[8], pf[8], kvar[8]; 
-	static char pa[8];
+	static char pa[8], kwh[10];
 	static char elap[32];
+	static uint32_t fae_total;
+	uint32_t calc_kwh;
 	uint16_t res;
 	uint16_t cs;
 	int16_t kvai;
@@ -734,21 +813,16 @@ int main(void)
     eeprom_read_block(&eecal, &eecal_eemem, sizeof(eecal)); 
     res = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
     
-    printf("Res: %04X, sig: %04X\n", res, eecal.sig);
     
     // Check state of calibration portion of EEPROM
     
-	if((eecal.sig != 0x55AA) || (res != eecal.cal_crc)){ // BAD signature or bad CRC in EEPROM
+	if((0x55AA != eecal.sig) || (res != eecal.cal_crc)){ // BAD signature or bad CRC in EEPROM
 		printf_P(PSTR("[s:EEPROM,AUTOINIT]\n"));
 		// Read the defaults from the chip
 		eecal.sig = 0x55AA;
 		em_read_block(EM_PLCONSTL, EM_MMODE, eecal.meter_cal);
 		em_read_block(EM_UGAIN, EM_QOFFSETN, eecal.measure_cal);
-		// Change the power line constant
-		eecal.meter_cal[PLCONSTL] = (uint16_t) PLC;
-		eecal.meter_cal[PLCONSTH] = (uint16_t) (PLC >> 16);
-		// Change the mode word
-		eecal.meter_cal[MMODE] = MODE_WORD;
+
 			
 	    // Write data back out to EEPROM
 
@@ -757,9 +831,15 @@ int main(void)
 		eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
 
 	}	
+	
   
     //Enter meter calibration
 	em_write_transaction(EM_CALSTART, 0x5678);
+	// Override the power line constant
+	eecal.meter_cal[PLCONSTL] = (uint16_t) PLC;
+	eecal.meter_cal[PLCONSTH] = (uint16_t) (PLC >> 16);
+	// Override the mode word
+	eecal.meter_cal[MMODE] = MODE_WORD;
     // Write out the meter cal values
     cs = em_write_block(EM_PLCONSTH, EM_MMODE, eecal.meter_cal);
     // Write CS1 checksum
@@ -774,14 +854,15 @@ int main(void)
 	// Write the CS2 checksum
 	em_write_transaction(EM_CS2, cs);
 	// Exit measurement calibration
-	em_write_transaction(EM_ADJSTART, 0);
+	em_write_transaction(EM_ADJSTART, 0x8765);
 
 	
 	delay_ms(10);
 	// Send meter status
-	printf_P(PSTR("[s:MODEREG,%04X]\n"), em_read_transaction(EM_SYSSTATUS));
+	printf_P(PSTR("[s:SYSSTAT,%04X]\n"), em_read_transaction(EM_SYSSTATUS));
 	
-	
+
+
 
 	for(;;){ 		
 		/*
@@ -805,11 +886,12 @@ int main(void)
 			case DISPMODE_KVA:
 			case DISPMODE_ARMS:
 			case DISPMODE_VRMS:
+			
+			
 				// Get data
 				// kW
 				twos_compl_to_fixed_decimal_int16(kw,8,3, 
 					(int16_t) em_read_transaction(EM_PMEAN));
-	
 
 				// Vrms
 				to_fixed_decimal_uint16(volts, 8, 2,
@@ -826,6 +908,22 @@ int main(void)
 				// Line frequency
 				to_fixed_decimal_uint16(hz, 8, 2, 
 					em_read_transaction(EM_FREQ));
+					
+				// KWH
+				uint16_t fae =  em_read_transaction(EM_APENERGY);
+				
+				// Add what was read to the total.
+				fae_total += fae;
+			
+				// KWH is equivalent to  fae_total divided by MC integer pulses 
+				// Since the fractional pulses are included in fae_total,
+				// we need to account for them.  We do this by multiplying
+				// by 1000 so that we get a kwh number which can be represented
+				// with 4 decimal digits.
+				//
+				calc_kwh = ((fae_total * 1000L)/ MC);
+				sprintf_P(kwh, PSTR("%03d.%04d"),((uint16_t) calc_kwh / 10000), ((uint16_t) calc_kwh % 10000));
+			
 
 
 				// For Power Factor, kVAR and Phase angle:
@@ -847,15 +945,18 @@ int main(void)
 					set_doubledash(pf);
 					set_doubledash(pa);
 				}
+				
 		
 	
 
 				// Send measurement record
 				if(switches.send_measurement_records){
 					make_time(elap, 32);
-					printf_P(PSTR("[m: %s, %s, %s, %s, %s, %s, %s, %s, %s]\n"),
-					elap, kw, volts, amps, kva, hz, pf, kvar, pa);
+					printf_P(PSTR("[mdata: %s, %s, %s, %s, %s, %s, %s, %s, %s, %s]\n"),
+					elap, kw, volts, amps, kva, hz, pf, kvar, pa, kwh);
 				}
+				
+			
 	
 			default:
 			break;
@@ -875,7 +976,7 @@ int main(void)
 				case DISPMODE_VRMS:
 				case DISPMODE_ARMS:
 					draw_meter_data(volts, amps, kw, kva, hz, pf, 
-						kvar, pa);
+						kvar, pa, kwh);
 					break;
 		
 				default:
