@@ -2,8 +2,6 @@
 
   main.c 
   
-  
-  
 */
 
 #include "includes.h"
@@ -35,22 +33,20 @@ enum {UGAIN = 0, IGAINL, IGAINN, UOFFSET, IOFFSETL, IOFFSETN, POFFSETL, QOFFSETL
  */
  
 typedef struct {
-	uint16_t sig;
+	uint16_t sig;								// EEPROM signature for calibration data
 	uint16_t meter_cal[11];						// Meter calibration data
 	uint16_t measure_cal[10];					// Measurement calibration data
-	uint16_t cal_crc;
+	uint16_t cal_crc;							// CRC of the calibration data
 } eeprom_cal_data_t;
 
 typedef struct {
 	unsigned send_measurement_records : 1;		// Send measurement records when enabled
 } switches_t;
 
- 
-
-
 /*
  * EEPROM variables
  */
+ 
 eeprom_cal_data_t EEMEM eecal_eemem;
 
 
@@ -62,16 +58,14 @@ eeprom_cal_data_t EEMEM eecal_eemem;
 
 static eeprom_cal_data_t eecal;
 
-
 // Button data 
 
 static button_data_t button1, button2, button3;
 
-// System tick counter
-static volatile uint64_t ticks = 0;
+
 
 // Display mode
-typedef enum {DISPMODE_SPLASH=0, DISPMODE_KVA, DISPMODE_KW, 
+typedef enum {DISPMODE_SPLASH=0, DISPMODE_MAIN_MENU, DISPMODE_KVA, DISPMODE_KW, 
 	DISPMODE_ARMS, DISPMODE_VRMS} dispmode_t;
 static dispmode_t dispmode;
 // Calibration mode
@@ -88,6 +82,28 @@ static switches_t switches;
 // U8clib data
 static u8g_t u8g;
 
+// The convoluted mess of putting the Menu data in program space
+const char mmi1[] PROGMEM = "Reset kWh Counter";
+const char mmi2[] PROGMEM = "Test Item";
+
+
+PGM_P const main_menu_strings[] PROGMEM = {
+	mmi1,
+	mmi2,
+	NULL
+};
+
+// Button labels
+const char bl_select[] PROGMEM = "Select";
+const char bl_next[] PROGMEM = "Next";
+const char bl_exit[] PROGMEM = "Exit";
+
+// Menu data structure declarations
+
+static menu_buttons_t bt_left;
+static menu_buttons_t bt_middle;
+static menu_buttons_t bt_right;
+static menu_t main_menu;
 
 /*
  * Timer0 overflow interrupt
@@ -97,85 +113,13 @@ static u8g_t u8g;
 
 ISR(TIMER0_OVF_vect)
 {
-	ticks++;
+	timer0_ticks64++;
 	// Every 16 ticks, service the button list
-	if(!(ticks & 0xF))
+	if(!(timer0_ticks64 & 0xF))
 		button_service();		
 }
 
-/*
- * Calculate a future delay time or time out in milliseconds
- */
 
-static void set_future_ms(uint32_t msec, uint64_t *future)
-{
-	uint64_t now;
-	uint64_t x;
-	
-	// Critical section start
-	cli();
-	now = ticks;
-	sei();
-	// Critical section end
-	
-	if(msec < 42) // For very short times, don't do adjustment calcs
-		*future = now + msec;
-	else{
-		x = (msec * 1000ULL) / 1024ULL;
-		*future = x;
-	}
-}
-
-/*
- * Test a future delay time or time out
- */
- 
-static int test_future_ms(uint64_t *future)
-{
-	int res;
-	
-	// Critical section start
-	cli();
-	res = (ticks >= *future);
-	sei();
-	// Critical section end
-	
-	return res;		
-}
-
-/*
- * Delay to a time in the future in milliseconds
- */
- 
-
-void static delay_ms(uint32_t value)
-{
-	uint64_t future;
-	
-	set_future_ms(value, &future);
-	while(FALSE == test_future_ms(&future));
-}
-
-
-/*
- * Make an elapsed time string from ticks
- */
-
-void make_time(char *elap, uint8_t size)
-{
-	uint64_t now;
-
-	// Critical Section Start
-	cli();
-	now = ticks;
-	sei();
-	
-	now *= 10000;
-	now /= 9765;
-	// FIXME: Small printf doesn't seem to support uint64_t
-	// elapsed time will overflow after appx. 1149 power on hrs.
-	snprintf_P(elap, size, PSTR("%lu"), (uint32_t) now);
-}
 
 /*
  * Debug function. Dump registers as a set
@@ -397,36 +341,32 @@ static u8g_uint_t drawstr_P(u8g_t *u8g, u8g_uint_t x, u8g_uint_t y, const char *
  
 static void draw_splash(void)
 {
-  u8g_SetFont(&u8g, u8g_font_5x7);
-  drawstr_P(&u8g, 0, 24, PSTR("Energy Meter Version 0.0"));
-  drawstr_P(&u8g, 24, 32, PSTR("Copyright 2015"));
-  drawstr_P(&u8g, 0, 40, PSTR("Stephen Rodgers (HWSTAR)"));
-  drawstr_P(&u8g, 10, 48, PSTR("All Rights Reserved"));	
+	u8g_SetFont(&u8g, u8g_font_5x7);
+	drawstr_P(&u8g, 0, 24, PSTR("Energy Meter Version 0.0"));
+	drawstr_P(&u8g, 24, 32, PSTR("Copyright 2015"));
+	drawstr_P(&u8g, 0, 40, PSTR("Stephen Rodgers (HWSTAR)"));
+	drawstr_P(&u8g, 10, 48, PSTR("All Rights Reserved"));	
 }
 
 /*
- * Draw a menu
+ * Main menu action callback
  */
- 
-void draw_menu(const char **menu_strings, uint8_t menu_current) {
-  uint8_t i, h;
-  u8g_uint_t w, d;
-  u8g_SetFont(&u8g, u8g_font_5x7);
-  u8g_SetFontRefHeightText(&u8g);
-  u8g_SetFontPosTop(&u8g);
-  h = u8g_GetFontAscent(&u8g)-u8g_GetFontDescent(&u8g);
-  w = u8g_GetWidth(&u8g);
-  for( i = 0; menu_strings[i]; i++ ) {        // draw all menu items
-    d = (w-u8g_GetStrWidth(&u8g, menu_strings[i]))/2;
-    u8g_SetDefaultForegroundColor(&u8g);
-    if ( i == menu_current ) {               // current selected menu item
-      u8g_DrawBox(&u8g, 0, i*h+1, w, h);     // draw cursor bar
-      u8g_SetDefaultBackgroundColor(&u8g);
-    }
-    u8g_DrawStr(&u8g, d, i*h, menu_strings[i]);
-  }
-}
 
+void main_menu_action(uint8_t item_id)
+{
+	switch(item_id){
+		case 1:
+			printf_P(PSTR("Item 1\n"));
+			break;
+			
+		case 2:
+			printf_P(PSTR("Item 2\n"));
+			break;
+	
+		default:
+			break;
+	}	
+}
 
 /*
  * Draw meter data on graphic display
@@ -472,17 +412,9 @@ static void draw_meter_data(char *volts, char *amps, char *kw,
 			u8g_DrawStr(&u8g, column3, line2, amps); 
 			drawstr_P(&u8g, column4, line2, l_arms); 
 			u8g_DrawStr(&u8g, column1, line3, kva); 
-			drawstr_P(&u8g, column2, line3, l_kva); 
-			u8g_DrawStr(&u8g, column3, line3, hz); 
-			drawstr_P(&u8g, column4, line3, l_hz); 
-			u8g_DrawStr(&u8g, column1, line4, pf); 
-			drawstr_P(&u8g, column2, line4, l_pf); 
-			u8g_DrawStr(&u8g, column3, line4, kvar); 
-			drawstr_P(&u8g, column4, line4, l_kvar); 
-			u8g_DrawStr(&u8g, column1, line5, pa); 
-			drawstr_P(&u8g, column2, line5, l_ph);
-			u8g_DrawStr(&u8g, column3, line5, kwh);
-			drawstr_P(&u8g, column4, line5, l_kwh); 
+			drawstr_P(&u8g, column2, line3, l_kva);
+			 
+
 			break;
 			
 		case DISPMODE_KVA:
@@ -495,17 +427,9 @@ static void draw_meter_data(char *volts, char *amps, char *kw,
 			u8g_DrawStr(&u8g, column3, line2, amps); 
 			drawstr_P(&u8g, column4, line2, l_arms); 
 			u8g_DrawStr(&u8g, column1, line3, kw); 
-			drawstr_P(&u8g, column2, line3, l_kw); 
-			u8g_DrawStr(&u8g, column3, line3, hz); 
-			drawstr_P(&u8g, column4, line3, l_hz); 
-			u8g_DrawStr(&u8g, column1, line4, pf); 
-			drawstr_P(&u8g, column2, line4, l_pf); 
-			u8g_DrawStr(&u8g, column3, line4, kvar); 
-			drawstr_P(&u8g, column4, line4, l_kvar); 
-			u8g_DrawStr(&u8g, column1, line5, pa); 
-			drawstr_P(&u8g, column2, line5, l_ph); 
-			u8g_DrawStr(&u8g, column3, line5, kwh);
-			drawstr_P(&u8g, column4, line5, l_kwh);
+			drawstr_P(&u8g, column2, line3, l_kw);
+			 
+
 			break;
 			
 		case DISPMODE_ARMS:
@@ -518,17 +442,8 @@ static void draw_meter_data(char *volts, char *amps, char *kw,
 			u8g_DrawStr(&u8g, column3, line2, kva); 
 			drawstr_P(&u8g, column4, line2, l_kva); 
 			u8g_DrawStr(&u8g, column1, line3, kw); 
-			drawstr_P(&u8g, column2, line3, l_kw); 
-			u8g_DrawStr(&u8g, column3, line3, hz); 
-			drawstr_P(&u8g, column4, line3, l_hz); 
-			u8g_DrawStr(&u8g, column1, line4, pf); 
-			drawstr_P(&u8g, column2, line4, l_pf); 
-			u8g_DrawStr(&u8g, column3, line4, kvar); 
-			drawstr_P(&u8g, column4, line4, l_kvar); 
-			u8g_DrawStr(&u8g, column1, line5, pa); 
-			drawstr_P(&u8g, column2, line5, l_ph); 
-			u8g_DrawStr(&u8g, column3, line5, kwh);
-			drawstr_P(&u8g, column4, line5, l_kwh);
+			drawstr_P(&u8g, column2, line3, l_kw);
+
 			break;
 			
 		case DISPMODE_VRMS:
@@ -541,23 +456,28 @@ static void draw_meter_data(char *volts, char *amps, char *kw,
 			u8g_DrawStr(&u8g, column3, line2, kva); 
 			drawstr_P(&u8g, column4, line2, l_kva); 
 			u8g_DrawStr(&u8g, column1, line3, kw); 
-			drawstr_P(&u8g, column2, line3, l_kw); 
-			u8g_DrawStr(&u8g, column3, line3, hz); 
-			drawstr_P(&u8g, column4, line3, l_hz); 
-			u8g_DrawStr(&u8g, column1, line4, pf); 
-			drawstr_P(&u8g, column2, line4, l_pf); 
-			u8g_DrawStr(&u8g, column3, line4, kvar); 
-			drawstr_P(&u8g, column4, line4, l_kvar); 
-			u8g_DrawStr(&u8g, column1, line5, pa); 
-			drawstr_P(&u8g, column2, line5, l_ph); 
-			u8g_DrawStr(&u8g, column3, line5, kwh);
-			drawstr_P(&u8g, column4, line5, l_kwh);
+			drawstr_P(&u8g, column2, line3, l_kw);
+
 			break;
 				
 		default:
 			break;
 	}
 	
+		
+	// These fields stay the same from page to page		 
+	u8g_DrawStr(&u8g, column3, line3, hz); 
+	drawstr_P(&u8g, column4, line3, l_hz); 
+	u8g_DrawStr(&u8g, column1, line4, pf); 
+	drawstr_P(&u8g, column2, line4, l_pf); 
+	u8g_DrawStr(&u8g, column3, line4, kvar); 
+	drawstr_P(&u8g, column4, line4, l_kvar); 
+	u8g_DrawStr(&u8g, column1, line5, pa); 
+	drawstr_P(&u8g, column2, line5, l_ph); 
+	u8g_DrawStr(&u8g, column3, line5, kwh);
+	drawstr_P(&u8g, column4, line5, l_kwh);
+	
+	// Soft buttons
 	drawstr_P(&u8g, 8, line6, PSTR("Next"));
 	drawstr_P(&u8g, 100, line6, PSTR("Menu"));
   
@@ -602,8 +522,7 @@ static void process_command(char *line)
 						switches.send_measurement_records = FALSE;
 					printf_P(PSTR("[m:%c]\n"), line[3]);
 				}
-				break;			
-				
+				break;				
 		
 			case 'c':
 				if(len >= 3){
@@ -769,7 +688,7 @@ static void process_command(char *line)
 								// Turn calibration mode off
 								calmode = CALMODE_OFF;
 								// Wait for checksum result
-								delay_ms(100);
+								timer0_delay_ms(100);
 								// Tell host we are done
 								printf_P(PSTR("[c%c:SYSSTAT,%04X]\n"), line[2], em_read_transaction(EM_SYSSTATUS));
 							}
@@ -877,6 +796,8 @@ void check_buttons(void)
 	}
 }
 
+
+
 /*
  * Main function
  */	
@@ -900,7 +821,7 @@ int main(void)
  
   
     // Set splash time;
-    set_future_ms(5000, &timer);
+    timer0_future_ms(5000, &timer);
     
     
     eeprom_read_block(&eecal, &eecal_eemem, sizeof(eecal)); 
@@ -925,6 +846,12 @@ int main(void)
 
 	}	
 	
+	// Initialize main menu and buttons
+	menu_init(&main_menu, main_menu_strings, main_menu_action);
+	menu_add_button(&main_menu, &bt_left, bl_next, 1, 56, 8);
+	menu_add_button(&main_menu, &bt_middle, bl_select, 2, 56, 60);
+	menu_add_button(&main_menu, &bt_right, bl_exit, 3, 56, 60);
+	
  
     //Enter meter calibration
 	em_write_transaction(EM_CALSTART, 0x5678);
@@ -939,7 +866,7 @@ int main(void)
     em_write_transaction(EM_CS1, cs);
     // Exit meter calibration
     em_write_transaction(EM_CALSTART, 0x8765); 
-    delay_ms(100);
+    timer0_delay_ms(100);
     // Send meter status
     printf_P(PSTR("[s:SYSSTAT,%04X]\n"), em_read_transaction(EM_SYSSTATUS));
 	
@@ -951,7 +878,7 @@ int main(void)
 	em_write_transaction(EM_CS2, cs);
 	// Exit measurement calibration
 	em_write_transaction(EM_ADJSTART, 0x8765);
-	delay_ms(100);
+	timer0_delay_ms(100);
 
 	
 	// Send meter status
@@ -966,7 +893,7 @@ int main(void)
 		*/
 		
 		// Handle splash screen  
-		if((dispmode == DISPMODE_SPLASH) && test_future_ms(&timer)){
+		if((dispmode == DISPMODE_SPLASH) && timer0_test_future_ms(&timer)){
 			// Go to default display mode
 			dispmode = DISPMODE_KVA;
 			clear_screen();
@@ -977,6 +904,9 @@ int main(void)
 		
 		// Decide what data to gather
 		switch(dispmode){
+			
+			case DISPMODE_MAIN_MENU:
+				break;
 		
 			case DISPMODE_KW:
 			case DISPMODE_KVA:
@@ -1047,7 +977,7 @@ int main(void)
 
 				// Send measurement record
 				if(switches.send_measurement_records){
-					make_time(elap, 32);
+					timer0_elapsed_time(elap, 32);
 					printf_P(PSTR("[mdata: %s, %s, %s, %s, %s, %s, %s, %s, %s, %s]\n"),
 					elap, kw, volts, amps, kva, hz, pf, kvar, pa, kwh);
 				}
@@ -1057,14 +987,31 @@ int main(void)
 			default:
 			break;
 		}
-				
-		/* Update display */ 
+		
+		
+		// If display mode is main menu, only do
+		// screen refresh if absolutely required
+		
+		if(dispmode == DISPMODE_MAIN_MENU){
+			if(menu_update(&main_menu) == FALSE){
+				// Go back to the top of the event loop	
+				continue;
+			}
+		}
+		/*
+		 * Picture loop
+		 */
+	
 		u8g_FirstPage(&u8g);
 				
 		do{
 			switch(dispmode){
 				case DISPMODE_SPLASH:
 					draw_splash();
+					break;
+					
+				case DISPMODE_MAIN_MENU:
+					menu_draw(&main_menu, &u8g);
 					break;
 				
 				case DISPMODE_KW:
@@ -1074,6 +1021,7 @@ int main(void)
 					draw_meter_data(volts, amps, kw, kva, hz, pf, 
 						kvar, pa, kwh);
 					break;
+		
 		
 				default:
 					break;
