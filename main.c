@@ -404,6 +404,29 @@ static void draw_splash(void)
   drawstr_P(&u8g, 10, 48, PSTR("All Rights Reserved"));	
 }
 
+/*
+ * Draw a menu
+ */
+ 
+void draw_menu(const char **menu_strings, uint8_t menu_current) {
+  uint8_t i, h;
+  u8g_uint_t w, d;
+  u8g_SetFont(&u8g, u8g_font_5x7);
+  u8g_SetFontRefHeightText(&u8g);
+  u8g_SetFontPosTop(&u8g);
+  h = u8g_GetFontAscent(&u8g)-u8g_GetFontDescent(&u8g);
+  w = u8g_GetWidth(&u8g);
+  for( i = 0; menu_strings[i]; i++ ) {        // draw all menu items
+    d = (w-u8g_GetStrWidth(&u8g, menu_strings[i]))/2;
+    u8g_SetDefaultForegroundColor(&u8g);
+    if ( i == menu_current ) {               // current selected menu item
+      u8g_DrawBox(&u8g, 0, i*h+1, w, h);     // draw cursor bar
+      u8g_SetDefaultBackgroundColor(&u8g);
+    }
+    u8g_DrawStr(&u8g, d, i*h, menu_strings[i]);
+  }
+}
+
 
 /*
  * Draw meter data on graphic display
@@ -422,106 +445,121 @@ static void draw_meter_data(char *volts, char *amps, char *kw,
 	const char *l_kvar = PSTR("kVAR");
 	const char *l_ph = PSTR("PH<");
 	const char *l_kwh = PSTR("kWh");
+	const uint8_t column1 = 0;
+	const uint8_t column2 = 35;
+	const uint8_t column3 = 60;
+	const uint8_t column4 = 105;
+	const uint8_t line1 = 24;
+	const uint8_t line2 = 32;
+	const uint8_t line3 = 40;
+	const uint8_t line4 = 48;
+	const uint8_t line5 = 56;
+	const uint8_t line6 = 64;
+	
+	
+	
+	
+	
 
 	switch(dispmode){
 		case DISPMODE_KW:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
-			u8g_DrawStr(&u8g, 0, 24, kw);
+			u8g_DrawStr(&u8g, column1, line1, kw);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 105, 24, l_kw);
-			u8g_DrawStr(&u8g, 0, 32, volts); 
-			drawstr_P(&u8g, 35, 32, l_vrms); 
-			u8g_DrawStr(&u8g, 60, 32, amps); 
-			drawstr_P(&u8g, 105, 32, l_arms); 
-			u8g_DrawStr(&u8g, 0, 40, kva); 
-			drawstr_P(&u8g, 35, 40, l_kva); 
-			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 105, 40, l_hz); 
-			u8g_DrawStr(&u8g, 0, 48, pf); 
-			drawstr_P(&u8g, 35, 48, l_pf); 
-			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 105, 48, l_kvar); 
-			u8g_DrawStr(&u8g, 0, 56, pa); 
-			drawstr_P(&u8g, 35, 56, l_ph);
-			u8g_DrawStr(&u8g, 60, 56, kwh);
-			drawstr_P(&u8g, 105, 56, l_kwh); 
+			drawstr_P(&u8g, column4, line1, l_kw);
+			u8g_DrawStr(&u8g, column1, line2, volts); 
+			drawstr_P(&u8g, column2, line2, l_vrms); 
+			u8g_DrawStr(&u8g, column3, line2, amps); 
+			drawstr_P(&u8g, column4, line2, l_arms); 
+			u8g_DrawStr(&u8g, column1, line3, kva); 
+			drawstr_P(&u8g, column2, line3, l_kva); 
+			u8g_DrawStr(&u8g, column3, line3, hz); 
+			drawstr_P(&u8g, column4, line3, l_hz); 
+			u8g_DrawStr(&u8g, column1, line4, pf); 
+			drawstr_P(&u8g, column2, line4, l_pf); 
+			u8g_DrawStr(&u8g, column3, line4, kvar); 
+			drawstr_P(&u8g, column4, line4, l_kvar); 
+			u8g_DrawStr(&u8g, column1, line5, pa); 
+			drawstr_P(&u8g, column2, line5, l_ph);
+			u8g_DrawStr(&u8g, column3, line5, kwh);
+			drawstr_P(&u8g, column4, line5, l_kwh); 
 			break;
 			
 		case DISPMODE_KVA:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
-			u8g_DrawStr(&u8g, 0, 24, kva);
+			u8g_DrawStr(&u8g, column1, line1, kva);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 105, 24, l_kva);
-			u8g_DrawStr(&u8g, 0, 32, volts); 
-			drawstr_P(&u8g, 35, 32, l_vrms); 
-			u8g_DrawStr(&u8g, 60, 32, amps); 
-			drawstr_P(&u8g, 105, 32, l_arms); 
-			u8g_DrawStr(&u8g, 0, 40, kw); 
-			drawstr_P(&u8g, 35, 40, l_kw); 
-			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 105, 40, l_hz); 
-			u8g_DrawStr(&u8g, 0, 48, pf); 
-			drawstr_P(&u8g, 35, 48, l_pf); 
-			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 105, 48, l_kvar); 
-			u8g_DrawStr(&u8g, 0, 56, pa); 
-			drawstr_P(&u8g, 35, 56, l_ph); 
-			u8g_DrawStr(&u8g, 60, 56, kwh);
-			drawstr_P(&u8g, 105, 56, l_kwh);
+			drawstr_P(&u8g, column4, line1, l_kva);
+			u8g_DrawStr(&u8g, column1, line2, volts); 
+			drawstr_P(&u8g, column2, line2, l_vrms); 
+			u8g_DrawStr(&u8g, column3, line2, amps); 
+			drawstr_P(&u8g, column4, line2, l_arms); 
+			u8g_DrawStr(&u8g, column1, line3, kw); 
+			drawstr_P(&u8g, column2, line3, l_kw); 
+			u8g_DrawStr(&u8g, column3, line3, hz); 
+			drawstr_P(&u8g, column4, line3, l_hz); 
+			u8g_DrawStr(&u8g, column1, line4, pf); 
+			drawstr_P(&u8g, column2, line4, l_pf); 
+			u8g_DrawStr(&u8g, column3, line4, kvar); 
+			drawstr_P(&u8g, column4, line4, l_kvar); 
+			u8g_DrawStr(&u8g, column1, line5, pa); 
+			drawstr_P(&u8g, column2, line5, l_ph); 
+			u8g_DrawStr(&u8g, column3, line5, kwh);
+			drawstr_P(&u8g, column4, line5, l_kwh);
 			break;
 			
 		case DISPMODE_ARMS:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
-			u8g_DrawStr(&u8g, 0, 24, amps);
+			u8g_DrawStr(&u8g, column1, line1, amps);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 105, 24, l_arms);
-			u8g_DrawStr(&u8g, 0, 32, volts); 
-			drawstr_P(&u8g, 35, 32, l_vrms); 
-			u8g_DrawStr(&u8g, 60, 32, kva); 
-			drawstr_P(&u8g, 105, 32, l_kva); 
-			u8g_DrawStr(&u8g, 0, 40, kw); 
-			drawstr_P(&u8g, 35, 40, l_kw); 
-			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 105, 40, l_hz); 
-			u8g_DrawStr(&u8g, 0, 48, pf); 
-			drawstr_P(&u8g, 35, 48, l_pf); 
-			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 105, 48, l_kvar); 
-			u8g_DrawStr(&u8g, 0, 56, pa); 
-			drawstr_P(&u8g, 35, 56, l_ph); 
-			u8g_DrawStr(&u8g, 60, 56, kwh);
-			drawstr_P(&u8g, 105, 56, l_kwh);
+			drawstr_P(&u8g, column4, line1, l_arms);
+			u8g_DrawStr(&u8g, column1, line2, volts); 
+			drawstr_P(&u8g, column2, line2, l_vrms); 
+			u8g_DrawStr(&u8g, column3, line2, kva); 
+			drawstr_P(&u8g, column4, line2, l_kva); 
+			u8g_DrawStr(&u8g, column1, line3, kw); 
+			drawstr_P(&u8g, column2, line3, l_kw); 
+			u8g_DrawStr(&u8g, column3, line3, hz); 
+			drawstr_P(&u8g, column4, line3, l_hz); 
+			u8g_DrawStr(&u8g, column1, line4, pf); 
+			drawstr_P(&u8g, column2, line4, l_pf); 
+			u8g_DrawStr(&u8g, column3, line4, kvar); 
+			drawstr_P(&u8g, column4, line4, l_kvar); 
+			u8g_DrawStr(&u8g, column1, line5, pa); 
+			drawstr_P(&u8g, column2, line5, l_ph); 
+			u8g_DrawStr(&u8g, column3, line5, kwh);
+			drawstr_P(&u8g, column4, line5, l_kwh);
 			break;
 			
 		case DISPMODE_VRMS:
 			u8g_SetFont(&u8g, u8g_font_helvR24n);
-			u8g_DrawStr(&u8g, 0, 24, volts);
+			u8g_DrawStr(&u8g, column1, line1, volts);
 			u8g_SetFont(&u8g, u8g_font_5x7);
-			drawstr_P(&u8g, 105, 24, l_vrms);
-			u8g_DrawStr(&u8g, 0, 32, amps); 
-			drawstr_P(&u8g, 35, 32, l_arms); 
-			u8g_DrawStr(&u8g, 60, 32, kva); 
-			drawstr_P(&u8g, 105, 32, l_kva); 
-			u8g_DrawStr(&u8g, 0, 40, kw); 
-			drawstr_P(&u8g, 35, 40, l_kw); 
-			u8g_DrawStr(&u8g, 60, 40, hz); 
-			drawstr_P(&u8g, 105, 40, l_hz); 
-			u8g_DrawStr(&u8g, 0, 48, pf); 
-			drawstr_P(&u8g, 35, 48, l_pf); 
-			u8g_DrawStr(&u8g, 60, 48, kvar); 
-			drawstr_P(&u8g, 105, 48, l_kvar); 
-			u8g_DrawStr(&u8g, 0, 56, pa); 
-			drawstr_P(&u8g, 35, 56, l_ph); 
-			u8g_DrawStr(&u8g, 60, 56, kwh);
-			drawstr_P(&u8g, 105, 56, l_kwh);
+			drawstr_P(&u8g, column4, line1, l_vrms);
+			u8g_DrawStr(&u8g, column1, line2, amps); 
+			drawstr_P(&u8g, column2, line2, l_arms); 
+			u8g_DrawStr(&u8g, column3, line2, kva); 
+			drawstr_P(&u8g, column4, line2, l_kva); 
+			u8g_DrawStr(&u8g, column1, line3, kw); 
+			drawstr_P(&u8g, column2, line3, l_kw); 
+			u8g_DrawStr(&u8g, column3, line3, hz); 
+			drawstr_P(&u8g, column4, line3, l_hz); 
+			u8g_DrawStr(&u8g, column1, line4, pf); 
+			drawstr_P(&u8g, column2, line4, l_pf); 
+			u8g_DrawStr(&u8g, column3, line4, kvar); 
+			drawstr_P(&u8g, column4, line4, l_kvar); 
+			u8g_DrawStr(&u8g, column1, line5, pa); 
+			drawstr_P(&u8g, column2, line5, l_ph); 
+			u8g_DrawStr(&u8g, column3, line5, kwh);
+			drawstr_P(&u8g, column4, line5, l_kwh);
 			break;
 				
 		default:
 			break;
 	}
 	
-	drawstr_P(&u8g, 8, 64, PSTR("Next"));
-	drawstr_P(&u8g, 100, 64, PSTR("Menu"));
+	drawstr_P(&u8g, 8, line6, PSTR("Next"));
+	drawstr_P(&u8g, 100, line6, PSTR("Menu"));
   
 }
 
@@ -587,6 +625,7 @@ static void process_command(char *line)
 							em_read_block(EM_APENERGY, EM_ENSTATUS, dump_buf);
 							dump_words(dump_buf, EM_APENERGY, 7);
 							printf_P(PSTR("*** Measurement registers ***\n"));
+							em_read_block(EM_IRMS, EM_SMEAN, dump_buf);
 							dump_words(dump_buf, EM_IRMS, 8);
 							break;
 							
@@ -830,6 +869,7 @@ void check_buttons(void)
 				}
 			}
 			if((id == 3) && (event == BUTTON_EVENT_RELEASED)){ /* Menu */
+				printf_P(PSTR("[s:KWHRESET]\n"));
 				fae_total = 0UL;
 			}
 				
@@ -859,7 +899,6 @@ int main(void)
 	init();
  
   
-	em_write_transaction(0x00,0x789A); // Soft reset
     // Set splash time;
     set_future_ms(5000, &timer);
     
