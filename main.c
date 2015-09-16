@@ -67,7 +67,7 @@ static button_data_t button1, button2, button3;
 // Display mode
 typedef enum {DISPMODE_SPLASH=0, DISPMODE_MAIN_MENU, DISPMODE_KVA, DISPMODE_KW, 
 	DISPMODE_ARMS, DISPMODE_VRMS} dispmode_t;
-static dispmode_t dispmode;
+static dispmode_t dispmode, dispmode_saved;
 // Calibration mode
 typedef enum {CALMODE_OFF=0, CALMODE_SMALL_POWER, CALMODE_MEASUREMENT, 
 	CALMODE_ENERGY} calmode_t;
@@ -84,13 +84,12 @@ static u8g_t u8g;
 
 // The convoluted mess of putting the Menu data in program space
 const char mmi1[] PROGMEM = "Reset kWh Counter";
-const char mmi2[] PROGMEM = "Test Item";
+const char mmiend[] PROGMEM = "";
 
 
 PGM_P const main_menu_strings[] PROGMEM = {
 	mmi1,
-	mmi2,
-	NULL
+	mmiend
 };
 
 // Button labels
@@ -104,6 +103,8 @@ static menu_buttons_t bt_left;
 static menu_buttons_t bt_middle;
 static menu_buttons_t bt_right;
 static menu_t main_menu;
+static char volts[8], amps[8], kw[8], kva[8], hz[8], pf[8], kvar[8]; 
+static char pa[8], kwh[10];
 
 /*
  * Timer0 overflow interrupt
@@ -342,30 +343,10 @@ static u8g_uint_t drawstr_P(u8g_t *u8g, u8g_uint_t x, u8g_uint_t y, const char *
 static void draw_splash(void)
 {
 	u8g_SetFont(&u8g, u8g_font_5x7);
-	drawstr_P(&u8g, 0, 24, PSTR("Energy Meter Version 0.0"));
-	drawstr_P(&u8g, 24, 32, PSTR("Copyright 2015"));
+	drawstr_P(&u8g, 0, 20, PSTR("Energy Meter Version 0.0"));
+	drawstr_P(&u8g, 24, 30, PSTR("Copyright 2015"));
 	drawstr_P(&u8g, 0, 40, PSTR("Stephen Rodgers (HWSTAR)"));
-	drawstr_P(&u8g, 10, 48, PSTR("All Rights Reserved"));	
-}
-
-/*
- * Main menu action callback
- */
-
-void main_menu_action(uint8_t item_id)
-{
-	switch(item_id){
-		case 1:
-			printf_P(PSTR("Item 1\n"));
-			break;
-			
-		case 2:
-			printf_P(PSTR("Item 2\n"));
-			break;
-	
-		default:
-			break;
-	}	
+	drawstr_P(&u8g, 10, 50, PSTR("All Rights Reserved"));	
 }
 
 /*
@@ -755,10 +736,11 @@ static void serial_service(void)
 void check_buttons(void)
 {
 	uint8_t id, event;
+	uint8_t show_data = ((dispmode >= DISPMODE_KVA) && (dispmode <= DISPMODE_VRMS));
 	
 	if(button_get_event(&id, &event)){
 		// If displaying data
-		if((dispmode >= DISPMODE_KVA) && (dispmode <= DISPMODE_VRMS)){
+		if(show_data){
 			// If button #1 is released
 			if((id == 1) && (event == BUTTON_EVENT_RELEASED)){
 				clear_screen();
@@ -779,8 +761,7 @@ void check_buttons(void)
 					case DISPMODE_VRMS:
 						dispmode = DISPMODE_KW;
 						break;
-						
-											
+																
 					default:
 						dispmode = DISPMODE_KVA;
 						break;
@@ -788,12 +769,179 @@ void check_buttons(void)
 				}
 			}
 			if((id == 3) && (event == BUTTON_EVENT_RELEASED)){ /* Menu */
-				printf_P(PSTR("[s:KWHRESET]\n"));
-				fae_total = 0UL;
+				// Clear screen 
+				clear_screen();
+				// Set display mode
+				dispmode_saved = dispmode;
+				dispmode = DISPMODE_MAIN_MENU;
+				// Show menu
+				menu_show(&main_menu, 0);
 			}
 				
 		}
+		else{ /* Not showing data, must be in the menu system */
+			switch(dispmode){
+				case DISPMODE_MAIN_MENU:
+					// Act on main menu event
+					if(BUTTON_EVENT_RELEASED == event){
+						switch(id){
+							case 1: // Next
+								menu_next(&main_menu);
+								break;
+							
+							case 2: // Select
+								if(menu_selected(&main_menu) == 0){
+									fae_total = 0UL;
+									printf_P(PSTR("[s:RESETKWH]\n"));
+								}
+								// Lack of break deliberate
+									
+							case 3: // Exit
+								clear_screen();
+								dispmode = dispmode_saved;	
+								break;
+							
+							default:
+								break;
+						}
+					}				
+					break;
+					
+				default:
+					break;
+			}
+		}	
 	}
+}
+
+void gather_data(void)
+{
+
+	static char elap[32];
+	uint32_t calc_kwh;
+	int16_t kvai;
+
+	
+			
+	// Decide what data to gather
+	switch(dispmode){
+		
+		case DISPMODE_MAIN_MENU:
+		case DISPMODE_KW:
+		case DISPMODE_KVA:
+		case DISPMODE_ARMS:
+		case DISPMODE_VRMS:
+		
+		
+			// Get data
+			// kW
+			twos_compl_to_fixed_decimal_int16(kw,8,3, 
+				(int16_t) em_read_transaction(EM_PMEAN));
+
+			// Vrms
+			to_fixed_decimal_uint16(volts, 8, 2,
+				em_read_transaction(EM_URMS));
+
+			// Irms
+			to_fixed_decimal_uint16(amps, 8, 3,
+				em_read_transaction(EM_IRMS));
+
+			// Apparent power (kVA)
+			kvai = (int16_t) em_read_transaction(EM_SMEAN);
+			twos_compl_to_fixed_decimal_int16(kva,8,3, kvai);
+
+			// Line frequency
+			to_fixed_decimal_uint16(hz, 8, 2, 
+				em_read_transaction(EM_FREQ));
+				
+			// KWH
+			uint16_t fae =  em_read_transaction(EM_APENERGY);
+			
+			// Add what was read to the total.
+			fae_total += fae;
+		
+			// KWH is equivalent to  fae_total divided by MC integer pulses 
+			// Since the fractional pulses are included in fae_total,
+			// we need to account for them.  We do this by multiplying
+			// by 1000 so that we get a kwh number which can be represented
+			// with 4 decimal digits.
+			//
+			calc_kwh = ((fae_total * 1000L)/ MC);
+			sprintf_P(kwh, PSTR("%03d.%04d"),((uint16_t) calc_kwh / 10000), ((uint16_t) calc_kwh % 10000));
+		
+
+
+			// For Power Factor, kVAR and Phase angle:
+			// Only display these if there is apparent power
+			if(kvai){
+				// Power Factor
+				ones_compl_to_fixed_decimal_int16(pf, 8, 3,
+				em_read_transaction(EM_POWERF));
+				// Reactive power (kVA)
+				twos_compl_to_fixed_decimal_int16(kvar, 8, 3,
+				em_read_transaction(EM_QMEAN));
+				// Phase angle
+				ones_compl_to_fixed_decimal_int16(pa, 8, 1, 
+				em_read_transaction(EM_PANGLE));
+			}
+			else{
+				// Display double dash when above are invalid
+				set_doubledash(kvar);
+				set_doubledash(pf);
+				set_doubledash(pa);
+			}
+			
+	
+
+
+			// Send measurement record
+			if(switches.send_measurement_records){
+				timer0_elapsed_time(elap, 32);
+				printf_P(PSTR("[mdata: %s, %s, %s, %s, %s, %s, %s, %s, %s, %s]\n"),
+				elap, kw, volts, amps, kva, hz, pf, kvar, pa, kwh);
+			}
+			
+		
+
+		default:
+		break;
+	}
+	
+		
+}
+
+static void update_display(void)
+{
+	/*
+	 * Picture loop
+	 */
+
+	u8g_FirstPage(&u8g);
+			
+	do{
+		switch(dispmode){
+			case DISPMODE_SPLASH:
+				draw_splash();
+				break;
+				
+			case DISPMODE_MAIN_MENU:
+				menu_draw(&main_menu, &u8g);
+				break;
+			
+			case DISPMODE_KW:
+			case DISPMODE_KVA:
+			case DISPMODE_VRMS:
+			case DISPMODE_ARMS:
+				draw_meter_data(volts, amps, kw, kva, hz, pf, 
+					kvar, pa, kwh);
+				break;
+	
+	
+			default:
+				break;
+		}
+						
+	} while ( u8g_NextPage(&u8g) );
 }
 
 
@@ -805,17 +953,10 @@ void check_buttons(void)
 
 int main(void)
 {
-	static char volts[8], amps[8], kw[8], kva[8], hz[8], pf[8], kvar[8]; 
-	static char pa[8], kwh[10];
-	static char elap[32];
-	uint32_t calc_kwh;
 	uint16_t res;
 	uint16_t cs;
-	int16_t kvai;
 	static uint64_t timer;
 	
-	
-
 	
 	init();
  
@@ -836,7 +977,12 @@ int main(void)
 		eecal.sig = 0x55AA;
 		em_read_block(EM_PLCONSTH, EM_MMODE, eecal.meter_cal);
 		em_read_block(EM_UGAIN, EM_QOFFSETN, eecal.measure_cal);
-
+		
+	    // Override the power line constant
+	    eecal.meter_cal[PLCONSTL] = (uint16_t) PLC;
+	    eecal.meter_cal[PLCONSTH] = (uint16_t) (PLC >> 16);
+	    // Override the mode word
+	    eecal.meter_cal[MMODE] = MODE_WORD;
 			
 	    // Write data back out to EEPROM
 
@@ -847,10 +993,11 @@ int main(void)
 	}	
 	
 	// Initialize main menu and buttons
-	menu_init(&main_menu, main_menu_strings, main_menu_action);
+	menu_init(&main_menu, main_menu_strings);
+
 	menu_add_button(&main_menu, &bt_left, bl_next, 1, 56, 8);
-	menu_add_button(&main_menu, &bt_middle, bl_select, 2, 56, 60);
-	menu_add_button(&main_menu, &bt_right, bl_exit, 3, 56, 60);
+	menu_add_button(&main_menu, &bt_middle, bl_select, 2, 56, 50);
+	menu_add_button(&main_menu, &bt_right, bl_exit, 3, 56, 100);
 	
  
     //Enter meter calibration
@@ -901,133 +1048,20 @@ int main(void)
 	 
 		check_buttons();
 		serial_service();
-		
-		// Decide what data to gather
-		switch(dispmode){
-			
-			case DISPMODE_MAIN_MENU:
-				break;
-		
-			case DISPMODE_KW:
-			case DISPMODE_KVA:
-			case DISPMODE_ARMS:
-			case DISPMODE_VRMS:
-			
-			
-				// Get data
-				// kW
-				twos_compl_to_fixed_decimal_int16(kw,8,3, 
-					(int16_t) em_read_transaction(EM_PMEAN));
-
-				// Vrms
-				to_fixed_decimal_uint16(volts, 8, 2,
-					em_read_transaction(EM_URMS));
-
-				// Irms
-				to_fixed_decimal_uint16(amps, 8, 3,
-					em_read_transaction(EM_IRMS));
-
-				// Apparent power (kVA)
-				kvai = (int16_t) em_read_transaction(EM_SMEAN);
-				twos_compl_to_fixed_decimal_int16(kva,8,3, kvai);
-
-				// Line frequency
-				to_fixed_decimal_uint16(hz, 8, 2, 
-					em_read_transaction(EM_FREQ));
-					
-				// KWH
-				uint16_t fae =  em_read_transaction(EM_APENERGY);
-				
-				// Add what was read to the total.
-				fae_total += fae;
-			
-				// KWH is equivalent to  fae_total divided by MC integer pulses 
-				// Since the fractional pulses are included in fae_total,
-				// we need to account for them.  We do this by multiplying
-				// by 1000 so that we get a kwh number which can be represented
-				// with 4 decimal digits.
-				//
-				calc_kwh = ((fae_total * 1000L)/ MC);
-				sprintf_P(kwh, PSTR("%03d.%04d"),((uint16_t) calc_kwh / 10000), ((uint16_t) calc_kwh % 10000));
-			
-
-
-				// For Power Factor, kVAR and Phase angle:
-				// Only display these if there is apparent power
-				if(kvai){
-					// Power Factor
-					ones_compl_to_fixed_decimal_int16(pf, 8, 3,
-					em_read_transaction(EM_POWERF));
-					// Reactive power (kVA)
-					twos_compl_to_fixed_decimal_int16(kvar, 8, 3,
-					em_read_transaction(EM_QMEAN));
-					// Phase angle
-					ones_compl_to_fixed_decimal_int16(pa, 8, 1, 
-					em_read_transaction(EM_PANGLE));
-				}
-				else{
-					// Display double dash when above are invalid
-					set_doubledash(kvar);
-					set_doubledash(pf);
-					set_doubledash(pa);
-				}
-				
-		
-	
-
-				// Send measurement record
-				if(switches.send_measurement_records){
-					timer0_elapsed_time(elap, 32);
-					printf_P(PSTR("[mdata: %s, %s, %s, %s, %s, %s, %s, %s, %s, %s]\n"),
-					elap, kw, volts, amps, kva, hz, pf, kvar, pa, kwh);
-				}
-				
-			
-	
-			default:
-			break;
-		}
-		
+		gather_data();
 		
 		// If display mode is main menu, only do
 		// screen refresh if absolutely required
-		
+	
 		if(dispmode == DISPMODE_MAIN_MENU){
-			if(menu_update(&main_menu) == FALSE){
+			if(menu_update_required(&main_menu) == FALSE){
 				// Go back to the top of the event loop	
 				continue;
 			}
+			clear_screen(); // Clear screen for rewrite	
 		}
-		/*
-		 * Picture loop
-		 */
-	
-		u8g_FirstPage(&u8g);
-				
-		do{
-			switch(dispmode){
-				case DISPMODE_SPLASH:
-					draw_splash();
-					break;
-					
-				case DISPMODE_MAIN_MENU:
-					menu_draw(&main_menu, &u8g);
-					break;
-				
-				case DISPMODE_KW:
-				case DISPMODE_KVA:
-				case DISPMODE_VRMS:
-				case DISPMODE_ARMS:
-					draw_meter_data(volts, amps, kw, kva, hz, pf, 
-						kvar, pa, kwh);
-					break;
 		
-		
-				default:
-					break;
-			}
-							
-		} while ( u8g_NextPage(&u8g) );
+		update_display();
 	}
 }
 
