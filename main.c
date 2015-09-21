@@ -964,6 +964,12 @@ int main(void)
     // Set splash time;
     timer0_future_ms(5000, &timer);
     
+    // Per Atmel app note AN-643, change the Temperature coefficient from 0x8077 to 0x8097
+    _delay_us(20000);
+	em_write_transaction(EM_CALSTART, 0x9779);
+	em_write_transaction(EM_TCOEFF_ADJ, 0x8097);
+	em_write_transaction(EM_CALSTART, 0x8765);
+	_delay_us(100000);
     
     eeprom_read_block(&eecal, &eecal_eemem, sizeof(eecal)); 
     res = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
