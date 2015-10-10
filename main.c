@@ -223,48 +223,6 @@ uint8_t places, uint16_t val){
 }
 
 /*
- * Convert ones complement signed 16 bit integer to fixed point number
- */
-
-static char *ones_compl_to_fixed_decimal_int16(char *dest, uint8_t len, 
-uint8_t places, uint16_t val){
-	int16_t rem;
-	int16_t quot;
-	const char *format = NULL;
-	uint8_t negative = val & 0x8000 ? TRUE : FALSE;
-	
-	val = val & 0x7FFF;// Strip sign bit
-	
-	if(1 == places){
-		rem = val%10;
-		quot = val/10;
-		format = PSTR("%d.%d");
-	}
-	else if(2 == places){
-		rem = val%100;
-		quot = val/100;
-		format = PSTR("%d.%02d");
-
-	}
-	else{
-		rem = val%1000;
-		quot = val/1000;
-		format = PSTR("%d.%03d");
-	}
-	
-	// Set the sign of the integer part if negative
-	
-	if(negative)
-		quot *= -1;
-		
-	// Generate string 
-	snprintf_P(dest, len, format, quot, rem);
-	
-	return dest;
-}
-
-
-/*
  * Convert twos complement signed 16 bit integer to fixed point number
  */
 
@@ -291,15 +249,35 @@ uint8_t places, int16_t val){
 		format = PSTR("%d.%03d");
 	}
 	
-	// Decimal part is always positive.
+	// Adjust value when it is negative.
 	
-	if(val < 0)
+	if(val < 0){
+		quot *= -1;
 		rem *= -1;
+		dest[0] = '-';
+	}
 		
 	// Generate string 
-	snprintf_P(dest, len, format, quot, rem);
+	snprintf_P((val < 0) ? dest + 1 : dest, len, format, quot, rem);
 	
 	return dest;
+}
+
+/*
+ * Convert ones complement signed 16 bit integer to fixed point number
+ */
+
+static char *ones_compl_to_fixed_decimal_int16(char *dest, uint8_t len, 
+uint8_t places, uint16_t val){
+	int16_t twos_compl;
+	uint8_t negative = val & 0x8000 ? TRUE : FALSE;
+	
+	twos_compl = val & 0x7FFF;// Strip sign bit
+	
+	if(negative)
+		twos_compl *= -1;
+	
+	return twos_compl_to_fixed_decimal_int16(dest, len, places, twos_compl);
 }
 
 
