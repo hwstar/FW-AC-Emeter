@@ -8,6 +8,10 @@ as a starting point for a really nice AC energy meter:
 
 ![meter](energymeter.jpg)
 
+Here's a short video of it in action
+
+[video](https://www.youtube.com/watch?v=7jh4ObiPhaA)
+
 
 **Hardware Project**
 
