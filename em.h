@@ -76,6 +76,11 @@
 #define EM_PANGLE2 0x6E
 #define EM_SMEAN2 0x6F
 
+#define EM_CAL_FIRST EM_PLCONSTH
+#define EM_CAL_LAST EM_MMODE
+#define EM_MEAS_FIRST EM_UGAIN
+#define EM_MEAS_LAST EM_QOFFSETN
+
  
 /*
  * Function prototypes

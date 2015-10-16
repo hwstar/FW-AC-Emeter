@@ -18,7 +18,7 @@ Here's a short video of it in action
 [hardware project](https://github.com/hwstar/HW-AC-Emeter)
 
 
-License GPL 2.0.
+License GPL 3.0.
 
 Use at your own risk. Not responsible for injury, death, or property damage.
 

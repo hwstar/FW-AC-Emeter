@@ -1,6 +1,16 @@
 /*
+	This program is free software; you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation; either version 3 of the License, or
+	any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
   main.c 
+  
   
 */
 
@@ -10,6 +20,7 @@
  * Constants
  */
 
+#define NUM_JSON_TOKENS 8						// Maximum number of json tokens to use with parser (keep small, eats RAM).
 
 #define IBASIC 1								// Basic current (A)
 #define VREF 240								// Reference voltage (V)
@@ -68,16 +79,9 @@ static button_data_t button1, button2, button3;
 typedef enum {DISPMODE_SPLASH=0, DISPMODE_MAIN_MENU, DISPMODE_KVA, DISPMODE_KW, 
 	DISPMODE_ARMS, DISPMODE_VRMS} dispmode_t;
 static dispmode_t dispmode, dispmode_saved;
-// Calibration mode
-typedef enum {CALMODE_OFF=0, CALMODE_SMALL_POWER, CALMODE_MEASUREMENT, 
-	CALMODE_ENERGY} calmode_t;
-static calmode_t calmode;
 
 // Total forward active energy
 static uint32_t fae_total;
-
-// System soft switches
-static switches_t switches;
 
 // U8clib data
 static u8g_t u8g;
@@ -105,6 +109,7 @@ static menu_buttons_t bt_right;
 static menu_t main_menu;
 static char volts[8], amps[8], kw[8], kva[8], hz[8], pf[8], kvar[8]; 
 static char pa[8], kwh[10];
+static char elap[32];
 
 /*
  * Timer0 overflow interrupt
@@ -155,7 +160,35 @@ static uint16_t calcCRC16(void *buf, int len)
 	return crc;
 }
 
+/**
+ * Convert a hex string into a 16 bit unsigned integer
+ */
 
+static uint8_t str2hex(uint16_t *val, const char *str)
+{
+	uint8_t i;
+	char c;
+	
+	if(!val)
+		return FALSE;
+
+	*val = 0;
+	for(i = 0; i < 4; i++){
+		c = str[i];
+		if(!c)
+			break;
+		*val <<= 4;
+		if((c >= '0') && (c <= '9'))
+			*val |= (c - '0');
+		else if((c >= 'A') && (c <= 'F'))
+			*val |= (c - 0x37);
+		else if((c >= 'a') && (c <= 'f'))
+			*val |= (c - 0x57);
+		else
+			return FALSE;
+	}
+	return TRUE;
+}
 
 /*
  * Initialization function
@@ -304,6 +337,18 @@ static void clear_screen(void)
 }
 
 /*
+ * Reset kWh
+ */
+ 
+static void reset_kwh(void)
+{
+	em_read_transaction(EM_APENERGY);
+	fae_total = 0UL;
+}
+
+
+
+/*
  * Draw string from program memory
  */
  
@@ -443,230 +488,211 @@ static void draw_meter_data(char *volts, char *amps, char *kw,
 }
 
 /*
- * Test for a valid switch.
+ * Search for a key in the json string.
+ * Return -1 if not found, or the key index if found
+ * 
  */
 
-static bool valid_switch(char *line)
+int16_t json_key_index(const char *json, jsmntok_t *tokens, PGM_P key)
 {
-	if((strlen(line) >= 2) && (':' == line[0])){
-		if(('1' == line[1])||('0' == line[1]))
-			return TRUE;
+	uint8_t i;
+	// Test every other token starting with the second token.
+	for(i = 1; i < NUM_JSON_TOKENS; i += 2){
+		if(tokens[i].type == JSMN_STRING){
+			uint8_t len = tokens[i].end - tokens[i].start;
+			if(strlen_P(key) == len){
+				if(!strncmp_P(json + tokens[i].start, key, len)){
+					return i;
+				}
+			}
+		}			
 	}
-	return FALSE;	
+	return -1;
 }
+
+/*
+ * Copy the json value from the json string
+ */
+
+void json_value(const char *json, jsmntok_t *tokens, int16_t index, char *value, uint8_t vslen)
+{
+	uint8_t copylen;
+	// If user passed in NULL for value, return
+	if(!value)
+		return;
+	value[0] = 0;
+	// if User passed in zero length, return
+	if(!vslen)
+		return;
+	if(tokens[index].type == JSMN_STRING){
+		// Get actual string length
+		copylen = tokens[index].end - tokens[index].start;
+		// Clip to buffer length - 1;
+		if(copylen > vslen - 1)
+			copylen = vslen - 1;
+		// Copy the string to user supplied string pointer
+		strncpy(value, json + tokens[index].start, copylen);
+		value[copylen] = 0; // Add terminating character
+	}
+}
+
+/*
+ * Perform register command
+ */
+static void do_register_command(const char *line, jsmntok_t *tokens)
+{
+	int16_t addrtok, valuetok;
+	char addr_s[3], value_s[5];
+	uint16_t addr, value;
+	
+	// Check for address 
+	
+	addrtok = json_key_index(line, tokens, PSTR("addr"));
+	if(addrtok < 1)
+		return; // Address not present
+		
+	// Extract address
+	json_value(line, tokens, addrtok + 1, addr_s, sizeof(addr_s));
+	if(!str2hex(&addr, addr_s))
+		return; // Bad address
+
+	if(addr > 0x6F)
+		return; // Address out of range
+		
+	printf_P(PSTR("Addr: %s\n"), addr_s);
+	
+	// Get the value index if it exists
+	valuetok = json_key_index(line, tokens, PSTR("value"));
+
+	// If value specified, then it is a write
+	if(valuetok > 0){
+		uint8_t offset;
+		uint16_t cs;
+		// Check for valid write address
+		if((addr != 0) && (addr != 2) && (addr != 3)  && (addr != 4)){
+			if((addr < 0x21) || (addr > 0x3B))
+				return;
+			if((addr > 0x2B) && (addr < 0x30))
+				return;
+		}
+	
+			
+		// Extract value
+		json_value(line, tokens, valuetok + 1, value_s, sizeof(value_s));
+		if(!str2hex(&value, value_s))
+		return; // Bad value
+		
+		// Determine range
+		
+		if(addr < 0x20){
+			// Status and special registers
+			// Write not implemented
+			return;
+		}
+			
+		else if(addr < 0x30){			
+			// Metering calibration range
+			offset = addr - EM_CAL_FIRST;
+			eecal.meter_cal[offset] = value;
+			// Unlock meter cal
+			em_write_transaction(EM_CALSTART, 0x5678);
+			// Rewrite the block to the em chip
+			cs = em_write_block(EM_CAL_FIRST, EM_CAL_LAST, eecal.meter_cal);
+			// Write the new checksum
+			em_write_transaction(EM_CS1, cs);
+			// Lock the meter cal
+			em_write_transaction(EM_CALSTART, 0x8765);
+		}
+		
+		else{
+			// Measurement calibration range
+			offset = addr - EM_MEAS_FIRST;
+			eecal.measure_cal[offset] = value;
+			// Unlock meter cal
+			em_write_transaction(EM_ADJSTART, 0x5678);
+			// Rewrite the block to the em chip
+			cs = em_write_block(EM_MEAS_FIRST, EM_MEAS_LAST, eecal.measure_cal);
+			// Write the new checksum
+			em_write_transaction(EM_CS2, cs);
+			// Lock the meter cal
+			em_write_transaction(EM_ADJSTART, 0x8765);
+		}
+		// Update EEPROM
+		eecal.cal_crc = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
+		eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
+	}
+	else{
+			// Read value from em chip
+			value = em_read_transaction(addr);
+	}
+	printf_P(PSTR("{\"value\":\"%04X\"}\n"), value);
+}
+	
 
 /*
  * Process a command line
  */
- 
 
+ 
 static void process_command(char *line)
 {
-	char *p;
-	uint16_t reg,val;
-	uint8_t len = strlen(line);
-	static uint8_t upper = 0, lower = 0;
-	static uint16_t *cal_data = NULL;
-	static uint16_t dump_buf[16];
-	uint16_t cs;
+	//char *p;
+	//uint16_t reg,val;
+	//uint8_t len = strlen(line);
+	//static uint8_t upper = 0, lower = 0;
+	//static uint16_t *cal_data = NULL;
+	//static uint16_t dump_buf[16];
+	//uint16_t cs;
+	jsmnerr_t json_res;
+	jsmn_parser json_parser;
+	int16_t res;
+	char command[12];
+	jsmntok_t tokens[NUM_JSON_TOKENS];
 	
-	if((len >= 2) && ('[' == line[0])){ // Open bracket starts a command
-		
-		switch(line[1]){
-			case 'm':
-				if(valid_switch(line + 2)){
-					if('1' == line[3])
-						switches.send_measurement_records = TRUE;
-					else
-						switches.send_measurement_records = FALSE;
-					printf_P(PSTR("[m:%c]\n"), line[3]);
-				}
-				break;				
-		
-			case 'c':
-				if(len >= 3){
-					// Calibration sub commands
-					switch(line[2]){
-						
-						case 'd':
-							// Dump chip registers (DEBUG aid)
-							printf_P(PSTR("*** Status and special registers ***\n"));
-							em_read_block(EM_SYSSTATUS, EM_SMALLPMOD, dump_buf);
-							dump_words(dump_buf, EM_SYSSTATUS, 4);
-							printf_P(PSTR("*** Metering Cal Registers ***\n"));
-							em_read_block(EM_PLCONSTH, EM_MMODE, dump_buf);
-							dump_words(dump_buf, EM_PLCONSTH, 12);
-							printf_P(PSTR("*** Measurement Cal Registers ***\n"));
-							em_read_block(EM_UGAIN, EM_QOFFSETN, dump_buf);
-							dump_words(dump_buf, EM_UGAIN, 11);
-							printf_P(PSTR("*** Energy registers ***\n"));
-							em_read_block(EM_APENERGY, EM_ENSTATUS, dump_buf);
-							dump_words(dump_buf, EM_APENERGY, 7);
-							printf_P(PSTR("*** Measurement registers ***\n"));
-							em_read_block(EM_IRMS, EM_SMEAN, dump_buf);
-							dump_words(dump_buf, EM_IRMS, 8);
-							break;
-							
-				
-						// Enter energy calibration mode
-						case 'e':
-							if(calmode == CALMODE_OFF){
-								em_write_transaction(EM_CALSTART, 0x5678);
-								calmode = CALMODE_ENERGY;
-								lower = EM_PLCONSTH;
-								upper = EM_MMODE;
-								// Registers will be set to default,
-								// so we need to rewrite our calibration
-								// values back out to the em chip
-								cal_data = eecal.meter_cal;
-								cs = em_write_block(lower, upper, cal_data);
-								//dump_words(cal_data, lower, (upper - lower) + 1);	// DEBUG
-								//printf("Meter Checksum: %04X\n", cs); // DEBUG 			
-								printf_P(PSTR("[ce]\n"));
-							}
-							break;
-							
-						// Enter measurement calibration mode
-						case 'm':
-							if(calmode == CALMODE_OFF){
-								em_write_transaction(EM_ADJSTART, 0x5678);
-								calmode = CALMODE_MEASUREMENT;
-								lower = EM_UGAIN;
-								upper = EM_QOFFSETN;
-								// Registers will be set to default,
-								// so we need to rewrite our calibration
-								// values back out to the em chip	
-								cal_data = eecal.measure_cal;
-								cs = em_write_block(lower, upper, cal_data);
-								//dump_words(cal_data, lower, (upper - lower) + 1);	 // DEBUG
-								//printf("Measurement Checksum: %04X\n", cs); // DEBUG 						
-								printf_P(PSTR("[cm]\n"));
-							}
-							break;
-							
-						
-						case 'p':
-							// Small power mode
-							if(valid_switch(line + 3)){
-								if(line[4] == '1')
-									em_write_transaction(EM_SMALLPMOD, 0xA987);
-								else
-									em_write_transaction(EM_SMALLPMOD, 0);
-								printf_P(PSTR("[cp:%c]\n"), line[4]);
-							}
-							break;
-							
-						case 'w':
-							// Write a calibration register value to the em chip
-							if((len >= 10) && (calmode != CALMODE_OFF)){
-								if(':' == line[3]){
-									p = strchr(line + 4, ',');
-									if(p){
-										*p++ = 0;
-										reg = (uint8_t) strtoul(line + 4, NULL, 16);
-										val = (uint16_t) strtoul(p, NULL, 16);
-										// Check to see if it is within bounds
-										//printf("Reg: %02X Lower: %02X, Upper: %02X\n", reg, lower, upper);
-										if((reg >= lower) && (reg <= upper)){
-											// Update value in memory
-											cal_data[reg - lower] = val;
-											//printf("Memory offset: %02X\n", reg - lower);
-											// Update value on the em chip
-											em_write_transaction(reg, val);
-											//dump_words(cal_data, lower, (upper - lower) + 1); // DEBUG			
-											printf_P(PSTR("[cw:%02X,%04X]\n"), reg, val);
-										}
-									}
-								}
+	// Initialize JSON parser
+	jsmn_init(&json_parser);
 	
-							}
-							break;
-							
-						case 'r':
+	// Parse line of text as a json object
+	json_res = jsmn_parse(&json_parser, line, strlen(line), tokens, NUM_JSON_TOKENS);
 	
-							// Read a register value from the em chip
-							// Convert input string to register address
-							if((len >= 6 ) && (':' == line[3])){
-								reg = (uint8_t) strtoul(line + 4, NULL, 16);
-								//printf("Reg: %02X\n", reg);
-								// Check to see if it is within bounds
-								if(reg <= 0x6F){
-									// Convert to an offset
-									// Return the value
-									printf_P(PSTR("[cr:%02X,%04X]\n"), reg, em_read_transaction(reg));
-								}
-							}
-									
-				
-							break;
-							
-							
-						case 's': 
-						case 'x':
-							// x: Write data to em chip, but not eeprom and exit
-						    // s: Write cal data to both the em chip and eeprom and exit
-							if(CALMODE_OFF != calmode){
-								// Host send at least one write command.
-								//
-								// Rewrite everything as a block to the chip so
-								// a checksum can be calculated.
-								
-								//printf("cal_data: %04X, eecal.measure_cal: %04X, eecal.meter_cal: %04X\n",
-								//(uint16_t) cal_data, (uint16_t) eecal.measure_cal, (uint16_t) eecal.meter_cal); // DEBUG
-								//printf("upper: %02X lower: %02X\n", upper, lower);
-								cs = em_write_block(lower, upper, cal_data);
-			
-								// Write checksum
-								if(calmode == CALMODE_MEASUREMENT){
-									//printf("Write measurement checksum: %04X\n", cs);
-									em_write_transaction(EM_CS2, cs); // Write checksum
-								}
-								else{
-									//printf("Write meter checkum: %04X\n", cs);
-									em_write_transaction(EM_CS1, cs); // Write checksum
-								}
-							
-								//dump_words(cal_data, lower, (upper - lower) + 1); // DEBUG				
-								// Exit calibration mode
-								if(calmode == CALMODE_MEASUREMENT){
-									em_write_transaction(EM_ADJSTART, 0x8765); // Exit
-								}
-								else{
-										em_write_transaction(EM_CALSTART, 0x8765); // Exit
-								}
-								
-								// Update all calibration data in EEPROM if command was [cs]
-								// This needs to happen after we write the checksum to the em chip
-								// and exit calibration mode as the delay incurred will result in a 
-								// checksum error on the em chip
-								if('s' == line[2]){
-									eecal.cal_crc = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
-									eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
-								}
-									
-								// Turn calibration mode off
-								calmode = CALMODE_OFF;
-								// Wait for checksum result
-								timer0_delay_ms(100);
-								// Tell host we are done
-								printf_P(PSTR("[c%c:SYSSTAT,%04X]\n"), line[2], em_read_transaction(EM_SYSSTATUS));
-							}
-							break;
-							
+	if (json_res < 0) {
+		//printf_P(PSTR("Failed to parse JSON: %d\n"), json_res);
+		//printf_P(PSTR("Line: %s\n"), line);
+		return;
+	}
 
-							
-						default:
-							break;
-							
-					}
-				}
-				break;
-		
-		
-			default:
-				break;
-		}
-	}				
+	// First item must be an object 
+	if (json_res < 1 || tokens[0].type != JSMN_OBJECT) {
+		//printf_P(PSTR("Object expected\n"));
+		return;
+	}
+	
+	// Check for command string
+	res = json_key_index(line, tokens, PSTR("command"));
+	if(res < 0){
+		//printf_P(PSTR("command not present\n"));
+		return;
+	}
+	// Extract command keyword
+	json_value(line, tokens, res + 1, command, sizeof(command));
+	
+	// Decode JSON command */
+	
+	if(!strcmp_P(command, PSTR("query"))){
+		printf_P(PSTR("{\"elap\":\"%s\",\"irms\":\"%s\",\"urms\":\"%s\",\"pmean\":\"%s\",\"qmean\":\"%s\",\"freq\":\"%s\",\"powerf\":\"%s\",\"pangle\":\"%s\",\"smean\":\"%s\",\"kwh\":\"%s\"}"),
+			elap, amps, volts, kw, kvar, hz, pf, pa, kva, kwh);
+		// Query command
+	}
+	if(!strcmp_P(command, PSTR("resetkwh"))){
+		reset_kwh();
+		// Query command
+	}
+	if(!strcmp_P(command, PSTR("register"))){
+		do_register_command(line, tokens);
+		// Query command
+	}
+
+				
 }
 
 
@@ -679,7 +705,7 @@ static void process_command(char *line)
 static void serial_service(void)
 {
 
-	static char line[32];
+	static char line[64];
 	static uint8_t lpos = 0;
 	uint16_t s;
 	char c;
@@ -701,7 +727,7 @@ static void serial_service(void)
 	
 		}
 	}
-	else if(lpos < 32){
+	else if(lpos < sizeof(line)){
 		line[lpos] = c;
 		lpos++;
 	}
@@ -769,8 +795,7 @@ void check_buttons(void)
 							
 							case 2: // Select
 								if(menu_selected(&main_menu) == 0){
-									fae_total = 0UL;
-									printf_P(PSTR("[s:RESETKWH]\n"));
+									reset_kwh();
 								}
 								// Lack of break deliberate
 									
@@ -795,7 +820,7 @@ void check_buttons(void)
 void gather_data(void)
 {
 
-	static char elap[32];
+
 	uint32_t calc_kwh;
 	int16_t kvai;
 
@@ -870,19 +895,10 @@ void gather_data(void)
 			}
 			
 	
-
-
-			// Send measurement record
-			if(switches.send_measurement_records){
-				timer0_elapsed_time(elap, 32);
-				printf_P(PSTR("[mdata: %s, %s, %s, %s, %s, %s, %s, %s, %s, %s]\n"),
-				elap, kw, volts, amps, kva, hz, pf, kvar, pa, kwh);
-			}
-			
+		  	timer0_elapsed_time(elap, 32);
 		
-
 		default:
-		break;
+			break;
 	}
 	
 		
@@ -956,7 +972,7 @@ int main(void)
     // Check state of calibration portion of EEPROM
     
 	if((0x55AA != eecal.sig) || (res != eecal.cal_crc)){ // BAD signature or bad CRC in EEPROM
-		printf_P(PSTR("[s:EEPROM,AUTOINIT]\n"));
+		printf_P(PSTR("{\"eepromdefaulted\":\"1\"}\n"));
 		// Read the defaults from the chip
 		eecal.sig = 0x55AA;
 		em_read_block(EM_PLCONSTH, EM_MMODE, eecal.meter_cal);
@@ -971,7 +987,7 @@ int main(void)
 	    // Write data back out to EEPROM
 
 		eecal.cal_crc = calcCRC16(&eecal, (sizeof(eecal) - sizeof(uint16_t)));
-		printf("CRC: %04X\n", eecal.cal_crc);
+		printf("{\"eepromcrc\":\"%04X\"}\n", eecal.cal_crc);
 		eeprom_update_block(&eecal, &eecal_eemem, sizeof(eecal));
 
 	}	
@@ -999,7 +1015,7 @@ int main(void)
     em_write_transaction(EM_CALSTART, 0x8765); 
     timer0_delay_ms(100);
     // Send meter status
-    printf_P(PSTR("[s:SYSSTAT,%04X]\n"), em_read_transaction(EM_SYSSTATUS));
+    printf_P(PSTR("{\"calinit\":\"%04X\"}\n"), em_read_transaction(EM_SYSSTATUS));
 	
 	// Enter measurement calibration
 	em_write_transaction(EM_ADJSTART, 0x5678);
@@ -1013,7 +1029,7 @@ int main(void)
 
 	
 	// Send meter status
-	printf_P(PSTR("[s:SYSSTAT,%04X]\n"), em_read_transaction(EM_SYSSTATUS));
+	printf_P(PSTR("{\"measinit\":\"%04X\"}\n"), em_read_transaction(EM_SYSSTATUS));
 	
 
 

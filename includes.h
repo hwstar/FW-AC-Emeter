@@ -22,6 +22,7 @@
 #include "defs.h"
 #include "pins.h"
 #include "u8g.h"
+#include "jsmn.h"
 #include "em.h"
 #include "uart.h"
 #include "uartstream.h"
